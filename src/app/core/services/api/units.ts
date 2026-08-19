@@ -16,6 +16,11 @@ import {
 import type { FleetResourceLinkOptionsResponse } from '@shared/models/api/api-fleet-link-options.model';
 import { mapApiFleetResourceLinkOption } from '@shared/models/api/api-fleet-link-options.model';
 import { buildFleetLinkOptionsQuery } from './fleet-link-options-query';
+import {
+  fetchAllResourcePages,
+  mapResourceListPage,
+  type ResourceListPage,
+} from './resource-list';
 import { SessionService } from '../state/session';
 import { companyResourceUrl, requireCompanyId, resourceByIdUrl } from './api-url';
 
@@ -24,19 +29,33 @@ export class UnitsService {
   private readonly http = inject(HttpClient);
   private readonly session = inject(SessionService);
 
+  getUnitsPage(options?: {
+    includeFleetTenure?: boolean;
+    available?: boolean;
+    page?: number;
+    limit?: number;
+  }): Observable<ResourceListPage<Unit>> {
+    const companyId = requireCompanyId(this.session.companyId());
+    return mapResourceListPage(
+      this.http.get<ResourceListPage<Unit> | Record<string, unknown>[]>(
+        companyResourceUrl(companyId, 'units', {
+          includeFleetTenure: options?.includeFleetTenure,
+          available: options?.available,
+          page: options?.page,
+          limit: options?.limit,
+        }),
+      ),
+      mapApiUnit,
+    );
+  }
+
   getUnitsList(options?: {
     includeFleetTenure?: boolean;
     available?: boolean;
   }): Observable<Unit[]> {
-    const companyId = requireCompanyId(this.session.companyId());
-    return this.http
-      .get<Record<string, unknown>[]>(
-        companyResourceUrl(companyId, 'units', {
-          includeFleetTenure: options?.includeFleetTenure,
-          available: options?.available,
-        }),
-      )
-      .pipe(map((rows) => (Array.isArray(rows) ? rows : []).map((r) => mapApiUnit(r))));
+    return fetchAllResourcePages((page) =>
+      this.getUnitsPage({ ...options, page, limit: 100 }),
+    );
   }
 
   getUnitLinkOptions(params?: {

@@ -1,7 +1,11 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { map, Observable } from 'rxjs';
-import type { Operator } from '@shared/models/logistics.models';
+import type {
+  Operator,
+  OperatorAttachedDocument,
+  OperatorDocumentSlot,
+} from '@shared/models/logistics.models';
 import { mapApiOperator } from '@shared/data/api-mappers';
 import {
   mapApiOperatorOperationSummary,
@@ -14,21 +18,55 @@ import {
 import type { OperatorLinkOptionsResponse } from '@shared/models/api/api-fleet-link-options.model';
 import { mapApiOperatorLinkOption } from '@shared/models/api/api-fleet-link-options.model';
 import { buildFleetLinkOptionsQuery } from './fleet-link-options-query';
+import {
+  fetchAllResourcePages,
+  mapResourceListPage,
+  type ResourceListPage,
+} from './resource-list';
 import { SessionService } from '../state/session';
 import { companyResourceUrl, requireCompanyId, resourceByIdUrl } from './api-url';
+
+function mapOperatorStoredDocument(
+  raw: Record<string, unknown>,
+  fallback: { fileName: string; slot: OperatorDocumentSlot },
+): OperatorAttachedDocument {
+  return {
+    id: String(raw['id'] ?? ''),
+    fileName: String(raw['fileName'] ?? fallback.fileName),
+    slot: (String(raw['slot'] ?? fallback.slot) as OperatorDocumentSlot),
+    addedAt: String(raw['addedAt'] ?? new Date().toISOString().slice(0, 10)),
+    hasStoredFile: raw['hasStoredFile'] !== false,
+  };
+}
 
 @Injectable({ providedIn: 'root' })
 export class OperatorsService {
   private readonly http = inject(HttpClient);
   private readonly session = inject(SessionService);
 
-  getOperatorsList(options?: { available?: boolean }): Observable<Operator[]> {
+  getOperatorsPage(options?: {
+    available?: boolean;
+    page?: number;
+    limit?: number;
+  }): Observable<ResourceListPage<Operator>> {
     const companyId = requireCompanyId(this.session.companyId());
-    return this.http
-      .get<Record<string, unknown>[]>(
-        companyResourceUrl(companyId, 'operators', { available: options?.available }),
-      )
-      .pipe(map((rows) => rows.map((r) => mapApiOperator(r))));
+    return mapResourceListPage(
+      this.http.get<ResourceListPage<Operator> | Record<string, unknown>[]>(
+        companyResourceUrl(companyId, 'operators', {
+          available: options?.available,
+          page: options?.page,
+          limit: options?.limit,
+        }),
+      ),
+      mapApiOperator,
+    );
+  }
+
+  /** Catálogo completo vía páginas de 100 (sin endpoint ilimitado). */
+  getOperatorsList(options?: { available?: boolean }): Observable<Operator[]> {
+    return fetchAllResourcePages((page) =>
+      this.getOperatorsPage({ ...options, page, limit: 100 }),
+    );
   }
 
   getOperatorLinkOptions(params?: {
@@ -141,5 +179,42 @@ export class OperatorsService {
         {},
       )
       .pipe(map((r) => mapApiOperator(r)));
+  }
+
+  uploadOperatorDocument(
+    operatorId: string,
+    slot: OperatorDocumentSlot,
+    file: File,
+  ): Observable<OperatorAttachedDocument> {
+    const id = operatorId.trim();
+    const form = new FormData();
+    form.append('file', file, file.name);
+    form.append('slot', slot);
+    return this.http
+      .post<Record<string, unknown>>(
+        resourceByIdUrl('operators', id, 'documents'),
+        form,
+      )
+      .pipe(map((raw) => mapOperatorStoredDocument(raw, { fileName: file.name, slot })));
+  }
+
+  downloadOperatorDocument(
+    operatorId: string,
+    documentId: number,
+  ): Observable<{ url: string }> {
+    const id = operatorId.trim();
+    return this.http.get<{ url: string }>(
+      resourceByIdUrl('operators', id, `documents/${documentId}/download`),
+    );
+  }
+
+  deleteOperatorDocument(
+    operatorId: string,
+    documentId: number,
+  ): Observable<{ id: number; deleted: boolean }> {
+    const id = operatorId.trim();
+    return this.http.delete<{ id: number; deleted: boolean }>(
+      resourceByIdUrl('operators', id, `documents/${documentId}`),
+    );
   }
 }

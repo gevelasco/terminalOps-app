@@ -2,11 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   inject,
   model,
   resource,
   signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { catchError, firstValueFrom, forkJoin, of } from 'rxjs';
 import { finalize, map } from 'rxjs/operators';
@@ -78,6 +80,7 @@ function formatDeltaPercent(value: number | null | undefined): string {
   styleUrl: './dashboard-page.component.scss',
 })
 export class DashboardPageComponent {
+  private readonly destroyRef = inject(DestroyRef);
   private readonly dashboardApi = inject(DashboardService);
   private readonly companiesApi = inject(CompaniesService);
   private readonly expensesApi = inject(ExpensesService);
@@ -369,7 +372,10 @@ export class DashboardPageComponent {
     this.dieselSaving.set(true);
     this.companiesApi
       .updateDieselReferencePrice(companyId, price)
-      .pipe(finalize(() => this.dieselSaving.set(false)))
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.dieselSaving.set(false)),
+      )
       .subscribe({
         next: () => {
           this.toast.show('Precio de diésel actualizado.', 'success');

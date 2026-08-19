@@ -21,6 +21,8 @@ import { sortOperatorsByOperationalStatus } from '@shared/utils/operator-operati
  * Fuente única de verdad del feature Operadores (lista en memoria + selección).
  * GET /companies/{companyId}/operators — una vez al entrar; refresh solo tras mutaciones explícitas.
  * Alcance: ruta `/operators`.
+ *
+ * La lista omite `photoDataUrl`; al seleccionar se hidrata el detalle (foto incluida).
  */
 @Injectable()
 export class OperatorsFeatureService {
@@ -32,10 +34,12 @@ export class OperatorsFeatureService {
   private readonly _selectedOperatorId = signal<string | null>(null);
   private readonly _loading = signal(false);
   private readonly _hydrated = signal(false);
+  private readonly _detailLoading = signal(false);
 
   private initialLoadStarted = false;
   private disposed = false;
   private fetchSub: Subscription | null = null;
+  private detailSub: Subscription | null = null;
 
   constructor() {
     this.destroyRef.onDestroy(() => this.dispose());
@@ -52,6 +56,7 @@ export class OperatorsFeatureService {
   });
   readonly loading = this._loading.asReadonly();
   readonly hydrated = this._hydrated.asReadonly();
+  readonly detailLoading = this._detailLoading.asReadonly();
 
   loadOperators(): void {
     if (this.disposed) {
@@ -77,9 +82,13 @@ export class OperatorsFeatureService {
       return;
     }
     this._selectedOperatorId.set(id);
+    this.hydrateSelectedDetail(id);
   }
 
   clearSelection(): void {
+    this.detailSub?.unsubscribe();
+    this.detailSub = null;
+    this._detailLoading.set(false);
     this._selectedOperatorId.set(null);
   }
 
@@ -190,9 +199,57 @@ export class OperatorsFeatureService {
     }
     if (list.some((o) => o.id === selectedId)) {
       this._selectedOperatorId.set(selectedId);
+      this.hydrateSelectedDetail(selectedId);
       return;
     }
-    this._selectedOperatorId.set(null);
+    this.clearSelection();
+  }
+
+  /**
+   * Lista no trae `photoDataUrl`; el drawer necesita el GET por id.
+   * Conserva métricas de lista (owedAmount, etc.) si el detalle no las incluye.
+   */
+  private hydrateSelectedDetail(operatorId: string): void {
+    const id = operatorId.trim();
+    if (!id || this.disposed) {
+      return;
+    }
+    const listRow = this._operators().find((o) => o.id === id);
+    if (listRow?.photoDataUrl?.trim()) {
+      return;
+    }
+
+    this.detailSub?.unsubscribe();
+    this._detailLoading.set(true);
+    this.detailSub = this.operatorsApi
+      .getOperatorById(id)
+      .pipe(
+        catchError(() => of(null)),
+        finalize(() => {
+          if (this._selectedOperatorId() === id) {
+            this._detailLoading.set(false);
+          }
+        }),
+      )
+      .subscribe((detail) => {
+        if (this.disposed || !detail || this._selectedOperatorId() !== id) {
+          return;
+        }
+        const current = this._operators().find((o) => o.id === id);
+        this.replaceOperator({
+          ...detail,
+          maneuverCount: detail.maneuverCount ?? current?.maneuverCount,
+          lastManeuver: detail.lastManeuver ?? current?.lastManeuver,
+          nextPayDueOn: detail.nextPayDueOn ?? current?.nextPayDueOn,
+          nextPayDueVariant:
+            detail.nextPayDueVariant ?? current?.nextPayDueVariant,
+          owedAmount: detail.owedAmount ?? current?.owedAmount,
+          hasPhoto:
+            detail.hasPhoto === true ||
+            Boolean(detail.photoDataUrl?.trim()) ||
+            current?.hasPhoto,
+        });
+      });
   }
 
   /** Destrucción terminal al salir del feature (no reutilizar instancia). */
@@ -204,9 +261,12 @@ export class OperatorsFeatureService {
     this.requestGen.invalidate();
     this.fetchSub?.unsubscribe();
     this.fetchSub = null;
+    this.detailSub?.unsubscribe();
+    this.detailSub = null;
     this._operators.set([]);
     this._selectedOperatorId.set(null);
     this._loading.set(false);
+    this._detailLoading.set(false);
     this._hydrated.set(false);
     this.initialLoadStarted = false;
   }

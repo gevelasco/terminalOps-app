@@ -110,16 +110,16 @@
                 Elegir archivos
               </button>
             </div>
-          @if (operationDocuments().length > 0) {
+          @if (filesOperation().length > 0) {
             <ul class="fleet-unit-files">
-              @for (d of operationDocuments(); track d.id) {
+              @for (f of filesOperation(); track trackFileEntry($index, f)) {
                 <li class="fleet-unit-files__row">
-                  <span class="fleet-unit-files__name">{{ d.fileName }}</span>
+                  <span class="fleet-unit-files__name">{{ f.name }}</span>
                   <button
                     type="button"
                     class="fleet-unit-files__rm"
                     aria-label="Quitar archivo"
-                    (click)="removeDocument(d.id)"
+                    (click)="removeDocument('operation', $index)"
                   >
                     <to-icon name="delete" [size]="16" />
                   </button>
@@ -185,16 +185,16 @@
                 Elegir archivos
               </button>
             </div>
-          @if (insuranceDocuments().length > 0) {
+          @if (filesInsurance().length > 0) {
             <ul class="fleet-unit-files">
-              @for (d of insuranceDocuments(); track d.id) {
+              @for (f of filesInsurance(); track trackFileEntry($index, f)) {
                 <li class="fleet-unit-files__row">
-                  <span class="fleet-unit-files__name">{{ d.fileName }}</span>
+                  <span class="fleet-unit-files__name">{{ f.name }}</span>
                   <button
                     type="button"
                     class="fleet-unit-files__rm"
                     aria-label="Quitar archivo"
-                    (click)="removeDocument(d.id)"
+                    (click)="removeDocument('insurance', $index)"
                   >
                     <to-icon name="delete" [size]="16" />
                   </button>

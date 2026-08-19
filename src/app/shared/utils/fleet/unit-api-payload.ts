@@ -1,6 +1,9 @@
 import type { CreateUnitPayload } from '@shared/models/api/api-fleet.model';
 import type { Unit, UnitFleetMeta } from '@shared/models/logistics.models';
-import { withoutFleetOperationalStatus } from '@shared/utils/fleet/fleet-write-payload-sanitize';
+import {
+  sanitizeFleetMetaForWrite,
+  withoutFleetOperationalStatus,
+} from '@shared/utils/fleet/fleet-write-payload-sanitize';
 import { trailerTenureModeOrDefault } from '@shared/utils/fleet/trailer-tenure-mode';
 
 function fleetMetaWithTenureDefault(meta: UnitFleetMeta | undefined): UnitFleetMeta | undefined {
@@ -11,6 +14,19 @@ function fleetMetaWithTenureDefault(meta: UnitFleetMeta | undefined): UnitFleetM
     ...meta,
     trailerTenureMode: trailerTenureModeOrDefault(meta.trailerTenureMode),
   };
+}
+
+/** Sparse: no inyecta `trailerTenureMode` si el borrador no lo toca. */
+function sparseUnitFleetMeta(
+  meta: Partial<UnitFleetMeta> | undefined,
+): UnitFleetMeta | undefined {
+  if (!meta) {
+    return undefined;
+  }
+  if (meta.trailerTenureMode !== undefined) {
+    return fleetMetaWithTenureDefault(meta as UnitFleetMeta);
+  }
+  return meta as UnitFleetMeta;
 }
 
 export type UnitPersistDraft = {
@@ -39,7 +55,7 @@ export function buildUnitWritePayload(unit: Unit, draft?: UnitPersistDraft): Cre
     ...unitPatch,
   };
   const fleetMeta = draft?.sparseFleetMeta
-    ? fleetMetaWithTenureDefault(draft.fleetMeta as UnitFleetMeta | undefined)
+    ? sparseUnitFleetMeta(draft.fleetMeta)
     : fleetMetaWithTenureDefault(
         draft?.fleetMeta
           ? { ...(unit.fleetMeta ?? {}), ...draft.fleetMeta }
@@ -60,6 +76,8 @@ export function buildUnitWritePayload(unit: Unit, draft?: UnitPersistDraft): Cre
     name: mergedUnit.name?.trim() || undefined,
     trailerBrandAbbr: mergedUnit.trailerBrandAbbr?.trim() || undefined,
     trailerYear: mergedUnit.trailerYear?.trim() || undefined,
-    fleetMeta,
+    fleetMeta: sanitizeFleetMetaForWrite(
+      fleetMeta as Record<string, unknown> | undefined,
+    ) as UnitFleetMeta | undefined,
   }) as CreateUnitPayload;
 }

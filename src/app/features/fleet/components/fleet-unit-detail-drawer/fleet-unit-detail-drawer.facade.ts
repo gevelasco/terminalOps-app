@@ -26,6 +26,10 @@ import {
   companyMaintenancePolicyFromSession,
 } from '@shared/models/company-operational-settings.models';
 import type { EquipmentPersistDraft } from '@shared/utils/fleet/equipment-api-payload';
+import {
+  resolveEquipmentPersistDraft,
+  resolveUnitPersistDraft,
+} from '@shared/utils/fleet/fleet-persist-draft';
 import type { UnitPersistDraft } from '@shared/utils/fleet/unit-api-payload';
 import {
   trackFileEntry,
@@ -594,10 +598,12 @@ export class FleetUnitDetailDrawerFacade {
     if (this.saving()) {
       return;
     }
-    const unitToSend = this.domain.unitForPersist(this.effUnit(), this.localMaintEntries(), draft);
+    const localMaint = this.localMaintEntries();
+    const unitToSend = this.domain.unitForPersist(this.effUnit(), localMaint, draft);
+    const effectiveDraft = resolveUnitPersistDraft(draft, unitToSend, localMaint.length > 0);
     this.saving.set(true);
     this.unitsFeature
-      .updateUnit(unitToSend, draft, { skipListRefresh: options?.skipListRefresh })
+      .updateUnit(unitToSend, effectiveDraft, { skipListRefresh: options?.skipListRefresh })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (saved) => {
@@ -630,9 +636,10 @@ export class FleetUnitDetailDrawerFacade {
     if (this.saving()) {
       return;
     }
+    const effectiveDraft = resolveEquipmentPersistDraft(draft, equipment, false);
     this.saving.set(true);
     this.equipmentFeature
-      .updateEquipment(equipment, draft, { skipListRefresh: true })
+      .updateEquipment(equipment, effectiveDraft, { skipListRefresh: true })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (saved) => {
@@ -833,13 +840,19 @@ export class FleetUnitDetailDrawerFacade {
     const promoteDraft: EquipmentPersistDraft = {
       equipment: equipmentPromoteToLeadPersistDraft(),
     };
+    const effectiveUnhitch = resolveEquipmentPersistDraft(unhitchDraft, equipment, false);
+    const effectivePromote = resolveEquipmentPersistDraft(
+      promoteDraft,
+      rearToPromote,
+      false,
+    );
     // Primero desenganchar el 1.er; si se promueve el 2.do antes, el backend rechaza otro lead.
     this.saving.set(true);
     this.equipmentFeature
-      .updateEquipment(equipment, unhitchDraft, { skipListRefresh: true })
+      .updateEquipment(equipment, effectiveUnhitch, { skipListRefresh: true })
       .pipe(
         switchMap(() =>
-          this.equipmentFeature.updateEquipment(rearToPromote, promoteDraft, {
+          this.equipmentFeature.updateEquipment(rearToPromote, effectivePromote, {
             skipListRefresh: true,
           }),
         ),
@@ -1642,16 +1655,17 @@ export class FleetUnitDetailDrawerFacade {
       this.speedOptions.find((o) => o.value === this.editTransmissionSpeeds())?.label ||
       this.editTransmissionSpeeds().trim() ||
       undefined;
-    this.unitOverride.update((prev) => ({ ...prev, capacityKg, capacityTons }));
-    this.metaOverride.update((prev) => ({
-      ...prev,
+    const fleetMetaDraft: Partial<UnitFleetMeta> = {
       transmissionType: transLabel,
       transmissionSpeeds: speedsLabel,
       grossVehicleWeightLb: lbRaw || undefined,
       odometerKm: this.editOdometerKm().trim() || undefined,
-    }));
+    };
+    this.unitOverride.update((prev) => ({ ...prev, capacityKg, capacityTons }));
+    this.metaOverride.update((prev) => ({ ...prev, ...fleetMetaDraft }));
     this.persistCurrentUnit('Tren motriz y capacidad actualizados.', {
       unit: { capacityKg, capacityTons },
+      fleetMeta: fleetMetaDraft,
     });
   }
 

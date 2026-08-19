@@ -223,16 +223,15 @@ export interface OperatorPrivateInsurance {
 /** Origen del adjunto en expediente del operador. */
 export type OperatorDocumentSlot = 'operation' | 'insurance';
 
-/**
- * Referencia a un archivo adjunto del operador.
- * Hoy se persisten metadatos (nombre/slot/fecha); la descarga binaria irá por storage.
- */
+/** Archivo adjunto del operador (metadatos; binario en storage cuando `hasStoredFile`). */
 export interface OperatorAttachedDocument {
   id: string;
   fileName: string;
   slot: OperatorDocumentSlot;
   /** Fecha de registro (ISO `YYYY-MM-DD`). */
   addedAt: string;
+  /** True when the binary exists in object storage (downloadable). */
+  hasStoredFile?: boolean;
 }
 
 /** Persona de contacto en emergencia o trámites. */
@@ -260,8 +259,10 @@ export interface OperatorLastManeuver {
 export interface Operator {
   id: string;
   name: string;
-  /** Foto del operador (`data:image/...` en mock; URL de storage en API). */
+  /** Foto del operador (`data:image/...`). Solo en detalle; la lista usa `hasPhoto`. */
   photoDataUrl?: string;
+  /** Indica si existe foto sin transferir el data URL (listados). */
+  hasPhoto?: boolean;
   /** Nacimiento (ISO `YYYY-MM-DD`). */
   birthDate: string;
   curp: string;
@@ -687,6 +688,8 @@ export interface ExpenseAttachedDocument {
   fileName: string;
   slot: ExpenseDocumentSlot;
   addedAt?: string;
+  /** True when the binary exists in object storage (downloadable). */
+  hasStoredFile?: boolean;
 }
 
 export interface Expense {

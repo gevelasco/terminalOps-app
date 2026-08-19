@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '@core/services/api/auth';
@@ -16,6 +16,7 @@ export class ResetPasswordPageComponent {
   private readonly authApi = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly token = signal('');
   readonly error = signal<string | null>(null);
@@ -23,12 +24,20 @@ export class ResetPasswordPageComponent {
   readonly submitting = signal(false);
   readonly currentYear = new Date().getFullYear();
 
+  private redirectTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor() {
     const token = this.route.snapshot.queryParamMap.get('token')?.trim() ?? '';
     this.token.set(token);
     if (!token) {
       this.error.set('El enlace no es válido. Solicita uno nuevo desde el login.');
     }
+    this.destroyRef.onDestroy(() => {
+      if (this.redirectTimer != null) {
+        clearTimeout(this.redirectTimer);
+        this.redirectTimer = null;
+      }
+    });
   }
 
   onSubmit(event: SubmitEvent): void {
@@ -62,7 +71,11 @@ export class ResetPasswordPageComponent {
     try {
       await firstValueFrom(this.authApi.resetPassword(token, password));
       this.success.set(true);
-      setTimeout(() => {
+      if (this.redirectTimer != null) {
+        clearTimeout(this.redirectTimer);
+      }
+      this.redirectTimer = setTimeout(() => {
+        this.redirectTimer = null;
         void this.router.navigateByUrl('/login');
       }, 1500);
     } catch {

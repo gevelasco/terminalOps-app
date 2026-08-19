@@ -17,8 +17,8 @@ import type {
 import { createRequestGeneration } from '@shared/utils/request-generation';
 
 /**
- * Fuente única de verdad del feature Tarifas por destino (lista en memoria + selección).
- * GET /companies/{companyId}/destination-rates — lazy al abrir la tab Tarifas (una vez por visita al módulo).
+ * Fuente única de verdad del feature Tarifas por destino.
+ * GET list (slim) + GET by id al abrir drawer.
  * Alcance: ruta `/comercial/destination-rates`.
  */
 @Injectable()
@@ -26,14 +26,18 @@ export class DestinationRatesFeatureService {
   private readonly destroyRef = inject(DestroyRef);
   private readonly api = inject(DestinationRatesApiService);
   private readonly requestGen = createRequestGeneration();
+  private readonly detailGen = createRequestGeneration();
 
   private readonly _rates = signal<readonly DestinationRate[]>([]);
   private readonly _selectedRateId = signal<string | null>(null);
+  private readonly _selectedDetail = signal<DestinationRate | null>(null);
   private readonly _loading = signal(false);
+  private readonly _detailLoading = signal(false);
 
   private initialLoadStarted = false;
   private disposed = false;
   private fetchSub: Subscription | null = null;
+  private detailSub: Subscription | null = null;
 
   constructor() {
     this.destroyRef.onDestroy(() => this.dispose());
@@ -41,14 +45,9 @@ export class DestinationRatesFeatureService {
 
   readonly rates = this._rates.asReadonly();
   readonly selectedRateId = this._selectedRateId.asReadonly();
-  readonly selectedRate = computed(() => {
-    const id = this._selectedRateId();
-    if (!id) {
-      return null;
-    }
-    return this._rates().find((r) => r.id === id) ?? null;
-  });
+  readonly selectedRate = computed(() => this._selectedDetail());
   readonly loading = this._loading.asReadonly();
+  readonly detailLoading = this._detailLoading.asReadonly();
 
   loadDestinationRates(): void {
     if (this.disposed) {
@@ -68,19 +67,31 @@ export class DestinationRatesFeatureService {
     this.runFetch();
   }
 
+  /** Abre drawer: carga detalle completo por id. */
   selectRate(rateId: string, rate?: DestinationRate): void {
-    if (rate?.id === rateId) {
-      this._rates.update((list) =>
-        list.some((r) => r.id === rateId) ? list : [...list, rate],
-      );
+    const id = rateId.trim();
+    if (!id) {
+      return;
     }
-    if (this._rates().some((r) => r.id === rateId)) {
-      this._selectedRateId.set(rateId);
+    this._selectedRateId.set(id);
+    if (rate?.id === id) {
+      this._selectedDetail.set(rate);
+      this._detailLoading.set(false);
+      this.detailSub?.unsubscribe();
+      this.detailSub = null;
+      return;
     }
+    this._selectedDetail.set(null);
+    this.loadSelectedDetail(id);
   }
 
   clearSelection(): void {
+    this.detailSub?.unsubscribe();
+    this.detailSub = null;
+    this.detailGen.invalidate();
     this._selectedRateId.set(null);
+    this._selectedDetail.set(null);
+    this._detailLoading.set(false);
   }
 
   createDestinationRate(
@@ -94,8 +105,9 @@ export class DestinationRatesFeatureService {
             if (!this.canApplyResponse(requestId)) {
               return created;
             }
-            this.applyList(list, created.id);
-            return this._rates().find((r) => r.id === created.id) ?? created;
+            this.applyList(list);
+            this.selectRate(created.id, created);
+            return created;
           }),
         ),
       ),
@@ -109,14 +121,21 @@ export class DestinationRatesFeatureService {
     const keepId = this._selectedRateId() ?? rate.id;
     const requestId = this.requestGen.next();
     return this.api.patchDestinationRateById(rate, patch).pipe(
-      switchMap(() => this.fetchList()),
-      map((list) => {
-        if (!this.canApplyResponse(requestId)) {
-          return rate;
-        }
-        this.applyList(list, keepId);
-        return this._rates().find((r) => r.id === keepId) ?? rate;
-      }),
+      switchMap((updated) =>
+        this.fetchList().pipe(
+          map((list) => {
+            if (!this.canApplyResponse(requestId)) {
+              return updated;
+            }
+            this.applyList(list);
+            if (keepId) {
+              this._selectedDetail.set(updated);
+              this._selectedRateId.set(keepId);
+            }
+            return updated;
+          }),
+        ),
+      ),
     );
   }
 
@@ -128,9 +147,41 @@ export class DestinationRatesFeatureService {
         if (!this.canApplyResponse(requestId)) {
           return;
         }
-        this.applyList(list, null);
+        this.applyList(list);
+        if (this._selectedRateId() === rateId) {
+          this.clearSelection();
+        }
       }),
     );
+  }
+
+  private loadSelectedDetail(rateId: string): void {
+    const requestId = this.detailGen.next();
+    this.detailSub?.unsubscribe();
+    this._detailLoading.set(true);
+    this.detailSub = this.api
+      .getDestinationRateById(rateId)
+      .pipe(
+        catchError(() => of(null)),
+        finalize(() => {
+          if (this.detailGen.isCurrent(requestId)) {
+            this._detailLoading.set(false);
+          }
+        }),
+      )
+      .subscribe((detail) => {
+        if (this.disposed || !this.detailGen.isCurrent(requestId)) {
+          return;
+        }
+        if (this._selectedRateId() !== rateId) {
+          return;
+        }
+        if (!detail) {
+          this.clearSelection();
+          return;
+        }
+        this._selectedDetail.set(detail);
+      });
   }
 
   private runFetch(): void {
@@ -153,13 +204,17 @@ export class DestinationRatesFeatureService {
           if (!this.canApplyResponse(requestId)) {
             return;
           }
-          this.applyList(list, this._selectedRateId());
+          this.applyList(list);
+          const selectedId = this._selectedRateId();
+          if (selectedId && !list.some((r) => r.id === selectedId)) {
+            this.clearSelection();
+          }
         },
         error: () => {
           if (!this.canApplyResponse(requestId)) {
             return;
           }
-          this.applyList([], this._selectedRateId());
+          this.applyList([]);
         },
       });
   }
@@ -174,16 +229,8 @@ export class DestinationRatesFeatureService {
       .pipe(catchError(() => of([] as DestinationRate[])));
   }
 
-  private applyList(list: DestinationRate[], selectedId: string | null): void {
+  private applyList(list: DestinationRate[]): void {
     this._rates.set(list);
-    if (!selectedId) {
-      return;
-    }
-    if (list.some((r) => r.id === selectedId)) {
-      this._selectedRateId.set(selectedId);
-      return;
-    }
-    this._selectedRateId.set(null);
   }
 
   dispose(): void {
@@ -192,11 +239,16 @@ export class DestinationRatesFeatureService {
     }
     this.disposed = true;
     this.requestGen.invalidate();
+    this.detailGen.invalidate();
     this.fetchSub?.unsubscribe();
     this.fetchSub = null;
+    this.detailSub?.unsubscribe();
+    this.detailSub = null;
     this._rates.set([]);
     this._selectedRateId.set(null);
+    this._selectedDetail.set(null);
     this._loading.set(false);
+    this._detailLoading.set(false);
     this.initialLoadStarted = false;
   }
 }

@@ -1,4 +1,3 @@
-import { toClientDocumentsApiPayload } from '@features/clients/utils/client-attached-documents';
 import type {
   Client,
   ClientContactPerson,
@@ -87,18 +86,13 @@ export function formatClientDeliveryCoord(n: number | undefined): string {
   return n.toFixed(6);
 }
 
-/** Cuerpo POST/PATCH: lectura como `paymentTerms`; escritura como `payment`. */
+/** Cuerpo POST/PATCH alineado a CreateClientDto (sin id / agregados / docs). */
 export function buildClientApiWriteBody(
   input: Client | CreateClientPayload,
 ): Record<string, unknown> {
-  const {
-    payment,
-    maneuverCount: _maneuverCount,
-    commercialHealth: _commercialHealth,
-    delivery,
-    documents,
-    ...rest
-  } = input as Client;
+  const client = input as Client;
+  const payment = client.payment;
+  const delivery = client.delivery;
   const paymentBody = payment
     ? {
         hasCredit: payment.hasCredit,
@@ -113,20 +107,53 @@ export function buildClientApiWriteBody(
     : undefined;
   const deliveryBody = delivery
     ? {
-        postalCode: delivery.postalCode,
-        cityMunicipality: delivery.cityMunicipality,
-        locality: delivery.locality,
-        settlementConsId: delivery.settlementConsId,
-        latitude: delivery.latitude,
-        longitude: delivery.longitude,
+        ...(delivery.postalCode ? { postalCode: delivery.postalCode } : {}),
+        ...(delivery.cityMunicipality
+          ? { cityMunicipality: delivery.cityMunicipality }
+          : {}),
+        ...(delivery.locality ? { locality: delivery.locality } : {}),
+        ...(delivery.settlementConsId
+          ? { settlementConsId: delivery.settlementConsId }
+          : {}),
+        ...(delivery.latitude != null ? { latitude: delivery.latitude } : {}),
+        ...(delivery.longitude != null ? { longitude: delivery.longitude } : {}),
       }
     : undefined;
+  const contacts = (client.contacts ?? []).map(({ name, role, phone, email }) => ({
+    name,
+    ...(role ? { role } : {}),
+    ...(phone ? { phone } : {}),
+    ...(email ? { email } : {}),
+  }));
+  const billing = client.billing
+    ? {
+        ...(client.billing.invoiceLegalName
+          ? { invoiceLegalName: client.billing.invoiceLegalName }
+          : {}),
+        ...(client.billing.taxRegime ? { taxRegime: client.billing.taxRegime } : {}),
+        ...(client.billing.fiscalZip ? { fiscalZip: client.billing.fiscalZip } : {}),
+        ...(client.billing.cfdiUse ? { cfdiUse: client.billing.cfdiUse } : {}),
+        ...(client.billing.billingEmail
+          ? { billingEmail: client.billing.billingEmail }
+          : {}),
+        ...(client.billing.billingPhone
+          ? { billingPhone: client.billing.billingPhone }
+          : {}),
+      }
+    : undefined;
+
   return {
-    ...rest,
+    name: client.name,
+    ...(client.rfc ? { rfc: client.rfc } : {}),
+    ...(client.relationshipStartedOn
+      ? { relationshipStartedOn: client.relationshipStartedOn }
+      : {}),
+    ...(client.notes ? { notes: client.notes } : {}),
+    ...(billing && Object.keys(billing).length > 0 ? { billing } : {}),
     ...(paymentBody ? { payment: paymentBody } : {}),
-    ...(deliveryBody ? { delivery: deliveryBody } : {}),
-    ...(documents !== undefined
-      ? { documents: toClientDocumentsApiPayload(documents) }
+    ...(contacts.length > 0 ? { contacts } : {}),
+    ...(deliveryBody && Object.keys(deliveryBody).length > 0
+      ? { delivery: deliveryBody }
       : {}),
   };
 }

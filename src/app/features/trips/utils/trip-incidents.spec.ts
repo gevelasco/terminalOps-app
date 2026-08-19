@@ -43,4 +43,8 @@ describe('tripHasIncidents', () => {
   it('is false when bitácora is empty', () => {
     expect(tripHasIncidents({ incidents: [] })).toBe(false);
   });
+
+  it('is true when list payload only sends hasIncident flag', () => {
+    expect(tripHasIncidents({ incidents: [], hasIncident: true })).toBe(true);
+  });
 });

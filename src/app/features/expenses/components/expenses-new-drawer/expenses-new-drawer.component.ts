@@ -12,6 +12,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { catchError, forkJoin, of, switchMap, throwError, type Observable } from 'rxjs';
 import { ToastService } from '@core/notifications/toast.service';
 import {
   ExpensesService,
@@ -31,10 +32,6 @@ import {
   validateExpenseRubroTripLink,
   type ExpenseRubro,
 } from '@features/expenses/utils/expense-rubro.util';
-import {
-  filesToExpenseDocuments,
-  toExpenseDocumentsApiPayload,
-} from '@features/expenses/utils/expense-attached-documents';
 import type {
   Expense,
   ExpenseAttachedDocument,
@@ -115,6 +112,8 @@ export class ExpensesNewDrawerComponent {
   readonly paymentMethod = model('');
   readonly incurredAt = model(todayYmd());
   readonly documents = signal<ExpenseAttachedDocument[]>([]);
+  readonly newFiles = signal<File[]>([]);
+  private originalDocuments: ExpenseAttachedDocument[] = [];
 
   readonly tripId = model('');
   readonly relatedUnitId = model('');
@@ -178,6 +177,8 @@ export class ExpensesNewDrawerComponent {
     this.paymentMethod.set(e.paymentMethod ?? '');
     this.incurredAt.set(expenseIncurredDateInput(e.incurredAt));
     this.documents.set([...(e.documents ?? [])]);
+    this.originalDocuments = [...(e.documents ?? [])];
+    this.newFiles.set([]);
     this.tripId.set(e.tripId ?? '');
     this.relatedUnitId.set(e.relatedUnitId ?? '');
     this.relatedEquipmentId.set(e.relatedEquipmentId ?? '');
@@ -195,14 +196,39 @@ export class ExpensesNewDrawerComponent {
     if (files.length === 0) {
       return;
     }
-    this.documents.update((prev) => [
-      ...prev,
-      ...filesToExpenseDocuments(files, 'receipt'),
-    ]);
+    this.newFiles.update((prev) => [...prev, ...files]);
   }
 
   removeDocument(id: string): void {
     this.documents.update((prev) => prev.filter((d) => d.id !== id));
+  }
+
+  removeNewFile(index: number): void {
+    this.newFiles.update((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  private syncExpenseDocuments(
+    expenseId: string,
+    kept: readonly ExpenseAttachedDocument[],
+    newFiles: readonly File[],
+    original: readonly ExpenseAttachedDocument[],
+  ): Observable<unknown> {
+    const keptIds = new Set(
+      kept
+        .map((d) => Number(d.id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    );
+    const deletes = original
+      .filter((d) => {
+        const id = Number(d.id);
+        return Number.isInteger(id) && id > 0 && !keptIds.has(id);
+      })
+      .map((d) => this.expensesApi.deleteExpenseDocument(expenseId, Number(d.id)));
+    const uploads = newFiles.map((file) =>
+      this.expensesApi.uploadExpenseDocument(expenseId, 'receipt', file),
+    );
+    const ops = [...deletes, ...uploads];
+    return ops.length === 0 ? of(null) : forkJoin(ops);
   }
 
   submit(): void {
@@ -260,7 +286,6 @@ export class ExpensesNewDrawerComponent {
         this.description().trim() || descriptionHint || undefined,
       vendor: this.vendor().trim() || undefined,
       paymentMethod: this.paymentMethod().trim() || undefined,
-      documents: toExpenseDocumentsApiPayload(this.documents()),
       relatedUnitId: relatedUnitId || undefined,
       relatedEquipmentId: relatedEquipmentId || undefined,
       relatedOperatorId: relatedOperatorId || undefined,
@@ -268,22 +293,70 @@ export class ExpensesNewDrawerComponent {
     };
 
     const editing = this.editingExpense();
-    const request$ = editing
-      ? this.expensesApi.patchExpense(editing.id, payload)
-      : this.expensesApi.postExpense(payload);
+    const pendingUploads = this.newFiles();
+    const keptDocs = this.documents();
+    const originalDocs = this.originalDocuments;
+
+    let request$: Observable<Expense>;
+    if (editing) {
+      request$ = this.syncExpenseDocuments(
+        editing.id,
+        keptDocs,
+        pendingUploads,
+        originalDocs,
+      ).pipe(switchMap(() => this.expensesApi.patchExpense(editing.id, payload)));
+    } else {
+      request$ = this.expensesApi.postExpense(payload).pipe(
+        switchMap((created) => {
+          if (pendingUploads.length === 0) {
+            return of(created);
+          }
+          return forkJoin(
+            pendingUploads.map((file) =>
+              this.expensesApi.uploadExpenseDocument(created.id, 'receipt', file),
+            ),
+          ).pipe(
+            switchMap(() => of(created)),
+            catchError(() =>
+              throwError(() => ({
+                phase: 'documents' as const,
+                expenseId: created.id,
+              })),
+            ),
+          );
+        }),
+      );
+    }
 
     request$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (row: Expense) => {
+        next: (row) => {
           this.toast.show(
-            editing ? 'Gasto actualizado.' : 'Gasto registrado.',
+            editing
+              ? 'Gasto actualizado.'
+              : pendingUploads.length > 0
+                ? 'Gasto y documentos registrados.'
+                : 'Gasto registrado.',
             'success',
           );
           this.saved.emit(row);
           this.dismiss.emit();
         },
-        error: () => {
+        error: (err: unknown) => {
+          const docsFailed =
+            typeof err === 'object' &&
+            err !== null &&
+            'phase' in err &&
+            (err as { phase?: string }).phase === 'documents';
+          if (docsFailed) {
+            this.toast.show(
+              'El gasto se creó, pero no se pudieron subir los documentos. Ábrelo y súbelos de nuevo.',
+              'error',
+            );
+            this.dismiss.emit();
+            return;
+          }
           this.toast.show(
             editing ? 'No se pudo actualizar el gasto.' : 'No se pudo guardar el gasto.',
             'error',

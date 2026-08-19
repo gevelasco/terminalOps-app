@@ -89,16 +89,16 @@
                 Elegir archivos
               </button>
             </div>
-            @if (documents().length > 0) {
+            @if (filesFiscal().length > 0) {
               <ul class="fleet-unit-files">
-                @for (d of documents(); track d.id) {
+                @for (f of filesFiscal(); track $index) {
                   <li class="fleet-unit-files__row">
-                    <span class="fleet-unit-files__name">{{ d.fileName }}</span>
+                    <span class="fleet-unit-files__name">{{ f.name }}</span>
                     <button
                       type="button"
                       class="fleet-unit-files__rm"
                       aria-label="Quitar archivo"
-                      (click)="removeDocument(d.id)"
+                      (click)="removeDocument($index)"
                     >
                       <to-icon name="delete" [size]="16" />
                     </button>

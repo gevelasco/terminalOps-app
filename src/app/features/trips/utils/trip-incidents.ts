@@ -6,8 +6,13 @@ import {
   tripMarkedIncidentsSorted,
 } from './trip-bitacora';
 
-/** `true` si la maniobra tiene al menos una entrada de bitácora marcada como incidente. */
-export function tripHasIncidents(trip: Pick<Trip, 'incidents'>): boolean {
+/** `true` si la maniobra tiene incidente (flag API o bitácora marcada). */
+export function tripHasIncidents(
+  trip: Pick<Trip, 'incidents'> & { hasIncident?: boolean },
+): boolean {
+  if (trip.hasIncident === true) {
+    return true;
+  }
   return (trip.incidents ?? []).some(isTripBitacoraIncident);
 }
 

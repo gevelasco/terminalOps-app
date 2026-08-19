@@ -7,7 +7,13 @@ import { initialsFromDisplayName } from '@core/services/state/user-profile';
 
 export const OPERATOR_PHOTO_MAX_BYTES = PROFILE_PHOTO_MAX_BYTES;
 
-export function operatorHasPhoto(photoDataUrl: string | undefined): boolean {
+export function operatorHasPhoto(
+  photoDataUrl: string | undefined,
+  hasPhotoFlag?: boolean,
+): boolean {
+  if (hasPhotoFlag === true) {
+    return true;
+  }
   return !!photoDataUrl?.trim();
 }
 

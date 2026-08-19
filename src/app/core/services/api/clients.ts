@@ -2,11 +2,21 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { map, Observable, shareReplay, tap } from 'rxjs';
 import type { ClientBalanceSummary } from '@features/clients/utils/client-balance-summary';
-import type { ClientCommercialHealth } from '@shared/models/client.models';
+import type {
+  Client,
+  ClientAttachedDocument,
+  ClientCommercialHealth,
+  ClientDocumentSlot,
+  CreateClientPayload,
+} from '@shared/models/client.models';
 import { buildClientApiWriteBody } from '@features/clients/utils/client-payload';
 import { mapApiClient } from '@shared/data/api-mappers';
-import type { Client, CreateClientPayload } from '@shared/models/client.models';
 import { SessionService } from '../state/session';
+import {
+  fetchAllResourcePages,
+  mapResourceListPage,
+  type ResourceListPage,
+} from './resource-list';
 import { companyResourceUrl, requireCompanyId, resourceByIdUrl } from './api-url';
 
 export type ClientPickerOption = {
@@ -25,17 +35,45 @@ export type ClientBalanceOverviewResponse = {
   items: ClientBalanceOverviewItem[];
 };
 
+function mapClientStoredDocument(
+  raw: Record<string, unknown>,
+  fallback: { fileName: string; slot: ClientDocumentSlot },
+): ClientAttachedDocument {
+  return {
+    id: String(raw['id'] ?? ''),
+    fileName: String(raw['fileName'] ?? fallback.fileName),
+    slot: (String(raw['slot'] ?? fallback.slot) as ClientDocumentSlot),
+    addedAt: String(raw['addedAt'] ?? new Date().toISOString().slice(0, 10)),
+    hasStoredFile: raw['hasStoredFile'] !== false,
+  };
+}
+
 @Injectable({ providedIn: 'root' })
 export class ClientsService {
   private readonly http = inject(HttpClient);
   private readonly session = inject(SessionService);
   private pickerOptionsCache: Observable<ClientPickerOption[]> | null = null;
 
-  getClientsList(): Observable<Client[]> {
+  getClientsPage(options?: {
+    page?: number;
+    limit?: number;
+  }): Observable<ResourceListPage<Client>> {
     const companyId = requireCompanyId(this.session.companyId());
-    return this.http
-      .get<Record<string, unknown>[]>(companyResourceUrl(companyId, 'clients'))
-      .pipe(map((rows) => rows.map((r) => mapApiClient(r))));
+    return mapResourceListPage(
+      this.http.get<ResourceListPage<Client> | Record<string, unknown>[]>(
+        companyResourceUrl(companyId, 'clients', {
+          page: options?.page,
+          limit: options?.limit,
+        }),
+      ),
+      mapApiClient,
+    );
+  }
+
+  getClientsList(): Observable<Client[]> {
+    return fetchAllResourcePages((page) =>
+      this.getClientsPage({ page, limit: 100 }),
+    );
   }
 
   /** Solo id + nombre desde GET /companies/:id/clients/picker */
@@ -92,6 +130,43 @@ export class ClientsService {
         map((r) => mapApiClient(r)),
         tap(() => this.invalidateClientPickerCache()),
       );
+  }
+
+  uploadClientDocument(
+    clientId: string,
+    slot: ClientDocumentSlot,
+    file: File,
+  ): Observable<ClientAttachedDocument> {
+    const id = clientId.trim();
+    const form = new FormData();
+    form.append('file', file, file.name);
+    form.append('slot', slot);
+    return this.http
+      .post<Record<string, unknown>>(
+        resourceByIdUrl('clients', id, 'documents'),
+        form,
+      )
+      .pipe(map((raw) => mapClientStoredDocument(raw, { fileName: file.name, slot })));
+  }
+
+  downloadClientDocument(
+    clientId: string,
+    documentId: number,
+  ): Observable<{ url: string }> {
+    const id = clientId.trim();
+    return this.http.get<{ url: string }>(
+      resourceByIdUrl('clients', id, `documents/${documentId}/download`),
+    );
+  }
+
+  deleteClientDocument(
+    clientId: string,
+    documentId: number,
+  ): Observable<{ id: number; deleted: boolean }> {
+    const id = clientId.trim();
+    return this.http.delete<{ id: number; deleted: boolean }>(
+      resourceByIdUrl('clients', id, `documents/${documentId}`),
+    );
   }
 
   getClientsBalanceOverview(): Observable<ClientBalanceOverviewResponse> {

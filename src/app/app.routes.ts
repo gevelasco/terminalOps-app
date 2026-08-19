@@ -6,6 +6,46 @@ import { loginPageGuard } from '@core/guards/login-page.guard';
 
 export const routes: Routes = [
   {
+    path: '',
+    pathMatch: 'full',
+    redirectTo: 'en-mx',
+  },
+  {
+    path: 'en-mx',
+    loadComponent: () =>
+      import('./features/marketing/marketing-page.component').then(
+        (m) => m.MarketingPageComponent,
+      ),
+  },
+  {
+    path: 'privacidad',
+    loadComponent: () =>
+      import('./features/marketing/marketing-info-page.component').then(
+        (m) => m.MarketingInfoPageComponent,
+      ),
+  },
+  {
+    path: 'terminos',
+    loadComponent: () =>
+      import('./features/marketing/marketing-info-page.component').then(
+        (m) => m.MarketingInfoPageComponent,
+      ),
+  },
+  {
+    path: 'seguridad',
+    loadComponent: () =>
+      import('./features/marketing/marketing-info-page.component').then(
+        (m) => m.MarketingInfoPageComponent,
+      ),
+  },
+  {
+    path: 'soporte',
+    loadComponent: () =>
+      import('./features/marketing/marketing-info-page.component').then(
+        (m) => m.MarketingInfoPageComponent,
+      ),
+  },
+  {
     path: 'login',
     canActivate: [loginPageGuard],
     loadComponent: () =>
@@ -98,8 +138,7 @@ export const routes: Routes = [
       {
         path: 'users',
         canActivate: [moduleAccessGuard(APP_MODULE_CODES.USERS)],
-        loadChildren: () =>
-          import('./features/users/routes').then((m) => m.usersRoutes),
+        loadChildren: () => import('./features/users/routes').then((m) => m.usersRoutes),
       },
     ],
   },

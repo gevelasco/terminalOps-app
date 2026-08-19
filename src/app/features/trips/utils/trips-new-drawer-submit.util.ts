@@ -285,10 +285,6 @@ export function buildTripsNewDrawerSubmitResult(
     cobro = parsed.value;
   }
 
-  const equipmentLabels = snap.usesMultipleEquipment
-    ? [snap.equipmentPrimaryLabel, snap.equipmentSecondaryLabel]
-    : [snap.equipmentPrimaryLabel];
-
   const oCpDigits = normalizeMxPostalCodeDigits(snap.originCp);
   const dCpDigits = normalizeMxPostalCodeDigits(snap.destinationCp);
   const kmSnap = snap.routeKm;
@@ -303,9 +299,6 @@ export function buildTripsNewDrawerSubmitResult(
 
   const payload: CreateTripPayload = {
     operationType: op.trim(),
-    ...(snap.selectedOperationConfigId
-      ? { operationConfigurationId: snap.selectedOperationConfigId }
-      : {}),
     loadType: snap.loadType,
     containerType: snap.containerType,
     cargoDescription: snap.cargoDescription.trim(),
@@ -329,7 +322,6 @@ export function buildTripsNewDrawerSubmitResult(
     unitId: uid,
     clientName: client,
     clientId: includeBilling ? snap.clientId.trim() || undefined : undefined,
-    equipment: equipmentLabels,
     equipmentIds,
     plannedDepartureAt: plannedSchedule.plannedDepartureAt,
     plannedArrivalAt: plannedSchedule.plannedArrivalAt,

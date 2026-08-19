@@ -5,11 +5,12 @@ import {
   type MexicoStatesGeoJson,
 } from '@features/trips/utils/trips-map-state-activity';
 
-export function countDestinationRatesByState(
+/** Conteo de rutas por estado = CPs distintos con tarifa (heatmap / tooltip). */
+export function countDestinationRateRoutesByState(
   rates: readonly DestinationRate[],
   geoJson: MexicoStatesGeoJson,
 ): Map<string, number> {
-  const counts = new Map<string, number>();
+  const cpsByState = new Map<string, Set<string>>();
   for (const rate of rates) {
     const lat = rate.destinationLatitude;
     const lng = rate.destinationLongitude;
@@ -20,9 +21,30 @@ export function countDestinationRatesByState(
     if (!stateName) {
       continue;
     }
-    counts.set(stateName, (counts.get(stateName) ?? 0) + 1);
+    const cp = rate.postalCode.trim();
+    if (!cp) {
+      continue;
+    }
+    let set = cpsByState.get(stateName);
+    if (!set) {
+      set = new Set();
+      cpsByState.set(stateName, set);
+    }
+    set.add(cp);
+  }
+  const counts = new Map<string, number>();
+  for (const [state, set] of cpsByState) {
+    counts.set(state, set.size);
   }
   return counts;
+}
+
+/** @deprecated Prefer `countDestinationRateRoutesByState` (CPs distintos). */
+export function countDestinationRatesByState(
+  rates: readonly DestinationRate[],
+  geoJson: MexicoStatesGeoJson,
+): Map<string, number> {
+  return countDestinationRateRoutesByState(rates, geoJson);
 }
 
 export function countDestinationRatesWithCoords(

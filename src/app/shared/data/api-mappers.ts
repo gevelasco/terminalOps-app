@@ -111,6 +111,7 @@ export function mapApiClient(row: Record<string, unknown>): Client {
           fileName,
           slot: 'fiscal' as const,
           addedAt: String(d['addedAt'] ?? '').trim() || new Date().toISOString().slice(0, 10),
+          hasStoredFile: d['hasStoredFile'] === true,
         };
       })
       .filter((d): d is NonNullable<typeof d> => d != null),
@@ -156,7 +157,12 @@ export function mapApiOperator(row: Record<string, unknown>): Operator {
   return {
     id: resourceIdKey(row['id']),
     name: String(row['name']),
-    photoDataUrl: row['photoDataUrl'] as string | undefined,
+    photoDataUrl:
+      typeof row['photoDataUrl'] === 'string' ? row['photoDataUrl'] : undefined,
+    hasPhoto:
+      row['hasPhoto'] === true ||
+      (typeof row['photoDataUrl'] === 'string' &&
+        row['photoDataUrl'].trim().length > 0),
     birthDate: (row['birthDate'] as string) ?? '',
     curp: (row['curp'] as string) ?? '',
     rfc: (row['rfc'] as string) ?? '',
@@ -218,6 +224,7 @@ export function mapApiOperator(row: Record<string, unknown>): Operator {
       fileName: String(d['fileName']),
       slot: d['slot'] as 'operation' | 'insurance',
       addedAt: String(d['addedAt']),
+      hasStoredFile: d['hasStoredFile'] === true,
     })),
     maneuverCount:
       typeof row['maneuverCount'] === 'number' && Number.isFinite(row['maneuverCount'])
@@ -430,7 +437,9 @@ export function mapApiTrip(row: Record<string, unknown>): Trip {
       ? rawEquipmentIds.map((id) => resourceIdKey(id as string | number))
       : trip.equipmentIds,
     incidents,
-    hasIncident: (incidents ?? []).some((inc) => inc.isIncident === true),
+    hasIncident:
+      row['hasIncident'] === true ||
+      (incidents ?? []).some((inc) => inc.isIncident === true),
     tripDocuments: mapApiTripDocuments(row['tripDocuments']),
   };
   // Drop legacy API keys if still present on the wire.

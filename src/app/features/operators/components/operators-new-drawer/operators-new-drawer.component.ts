@@ -2,7 +2,6 @@ import {
   afterNextRender,
   ChangeDetectionStrategy,
   Component,
-  computed,
   DestroyRef,
   HostListener,
   inject,
@@ -12,10 +11,12 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { catchError, forkJoin, of, switchMap, throwError } from 'rxjs';
 import { ToastService } from '@core/notifications/toast.service';
+import { OperatorsService as OperatorsApiService } from '@core/services/api/operators';
 import { OperatorsFeatureService } from '@features/operators/services/operators.service';
 import { mergeOperatorNested } from '@features/operators/utils/operator-payload-defaults';
-import { filesToOperatorDocuments } from '@features/operators/utils/operator-attached-documents';
+import { trackFileEntry } from '@features/fleet/utils/list-trackers';
 import { EXPENSE_PAYMENT_METHOD_OPTIONS } from '@shared/catalogs/expense-form-options';
 import {
   OPERATOR_EMPLOYMENT_CONTRACT_OPTIONS,
@@ -27,7 +28,6 @@ import {
 } from '@shared/catalogs/operator-form-options';
 import type {
   Operator,
-  OperatorAttachedDocument,
   OperatorDocumentSlot,
   OperatorInsuranceKind,
   OperatorLicenseType,
@@ -73,6 +73,7 @@ function todayYmd(): string {
 export class OperatorsNewDrawerComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly operatorsFeature = inject(OperatorsFeatureService);
+  private readonly operatorsApi = inject(OperatorsApiService);
   private readonly toast = inject(ToastService);
 
   readonly dismiss = output<void>();
@@ -120,14 +121,9 @@ export class OperatorsNewDrawerComponent {
   readonly privDeductible = model('');
   readonly privPlan = model('');
 
-  readonly documents = signal<OperatorAttachedDocument[]>([]);
-
-  readonly operationDocuments = computed(() =>
-    this.documents().filter((d) => d.slot === 'operation'),
-  );
-  readonly insuranceDocuments = computed(() =>
-    this.documents().filter((d) => d.slot === 'insurance'),
-  );
+  readonly filesOperation = signal<File[]>([]);
+  readonly filesInsurance = signal<File[]>([]);
+  readonly trackFileEntry = trackFileEntry;
 
   readonly saving = signal(false);
 
@@ -156,15 +152,16 @@ export class OperatorsNewDrawerComponent {
     if (!list.length) {
       return;
     }
-    this.documents.update((prev) => [
-      ...prev,
-      ...filesToOperatorDocuments(list, slot),
-    ]);
+    const target =
+      slot === 'operation' ? this.filesOperation : this.filesInsurance;
+    target.update((prev) => [...prev, ...list]);
     input.value = '';
   }
 
-  removeDocument(id: string): void {
-    this.documents.update((prev) => prev.filter((d) => d.id !== id));
+  removeDocument(slot: OperatorDocumentSlot, index: number): void {
+    const target =
+      slot === 'operation' ? this.filesOperation : this.filesInsurance;
+    target.update((prev) => prev.filter((_, i) => i !== index));
   }
 
   submit(): void {
@@ -208,6 +205,17 @@ export class OperatorsNewDrawerComponent {
       this.toast.show('La vigencia de licencia debe ser AAAA-MM-DD.', 'warning');
       return;
     }
+
+    const pendingUploads: Array<{ slot: OperatorDocumentSlot; file: File }> = [
+      ...this.filesOperation().map((file) => ({
+        slot: 'operation' as const,
+        file,
+      })),
+      ...this.filesInsurance().map((file) => ({
+        slot: 'insurance' as const,
+        file,
+      })),
+    ];
 
     const payload: Omit<Operator, 'id'> = mergeOperatorNested({
       name,
@@ -253,21 +261,64 @@ export class OperatorsNewDrawerComponent {
         deductibleNotes: this.privDeductible().trim(),
         planSummary: this.privPlan().trim(),
       },
-      documents: [...this.documents()],
-    }) as Omit<Operator, 'id'>;
+      documents: [],
+    }) as unknown as Omit<Operator, 'id'>;
 
     this.saving.set(true);
     this.operatorsFeature
       .createOperator(payload)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        switchMap((created) => {
+          if (pendingUploads.length === 0) {
+            return of(created);
+          }
+          return forkJoin(
+            pendingUploads.map(({ slot, file }) =>
+              this.operatorsApi.uploadOperatorDocument(created.id, slot, file),
+            ),
+          ).pipe(
+            switchMap(() => of(created)),
+            catchError(() =>
+              throwError(() => ({
+                phase: 'documents' as const,
+                operatorId: created.id,
+              })),
+            ),
+          );
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (op) => {
+          if (pendingUploads.length > 0) {
+            this.operatorsFeature.refreshOperators();
+          }
           this.saving.set(false);
-          this.toast.show('Operador registrado.', 'success');
+          this.toast.show(
+            pendingUploads.length > 0
+              ? 'Operador y documentos registrados.'
+              : 'Operador registrado.',
+            'success',
+          );
           this.saved.emit(op);
           this.dismiss.emit();
         },
-        error: () => {
+        error: (err: unknown) => {
+          const docsFailed =
+            typeof err === 'object' &&
+            err !== null &&
+            'phase' in err &&
+            (err as { phase?: string }).phase === 'documents';
+          if (docsFailed) {
+            this.toast.show(
+              'El operador se creó, pero no se pudieron subir los documentos. Ábrelo y súbelos de nuevo.',
+              'error',
+            );
+            this.operatorsFeature.refreshOperators();
+            this.saving.set(false);
+            this.dismiss.emit();
+            return;
+          }
           this.toast.show('No se pudo guardar el operador.', 'error');
           this.saving.set(false);
         },

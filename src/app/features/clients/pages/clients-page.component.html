@@ -59,7 +59,7 @@
   }
 }
 
-@if (ratesFeature.selectedRate()) {
+@if (ratesFeature.selectedRateId()) {
   @defer {
     <app-destination-rates-detail-drawer (dismiss)="onRateDetailDismiss()" />
   }
@@ -200,8 +200,8 @@
       </div>
     } @else {
       <p class="clients-page__hint clients-page__hint--rates">
-        Destinos con tarifa por estado. Busca por CP, estado, municipio, colonia,
-        tipo o costo; o haz clic en un estado para ver las rutas.
+        Catálogo de tarifas ordenado por estado. Haz clic en una fila para ver el
+        detalle; el mapa muestra intensidad por cantidad de rutas (CPs) por estado.
       </p>
       <app-destination-rates-map
         [rates]="ratesFeature.rates()"

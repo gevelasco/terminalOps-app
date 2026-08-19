@@ -1,0 +1,410 @@
+<div class="mkt">
+  <header class="mkt-nav">
+    <div class="mkt-container mkt-nav__inner">
+      <a class="mkt-nav__brand" routerLink="/en-mx" aria-label="TerminalOps">
+        <img
+          class="mkt-nav__logo"
+          src="/favicon.png"
+          width="72"
+          height="34"
+          alt=""
+          aria-hidden="true"
+        />
+        <span class="mkt-nav__wordmark">TerminalOps</span>
+      </a>
+
+      <div class="mkt-nav__actions">
+        <a class="mkt-nav__login" routerLink="/login">Iniciar sesión</a>
+        <button type="button" class="mkt-nav__signup">Registrarse</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="mkt-hero" aria-labelledby="mkt-hero-title">
+      <div class="mkt-hero__glow" aria-hidden="true"></div>
+      <div class="mkt-container mkt-hero__inner">
+        <div class="mkt-hero__copy">
+          <p class="mkt-eyebrow">Plataforma para terminales y flotas</p>
+          <h1 id="mkt-hero-title" class="mkt-hero__title">
+            La operación logística,
+            <span class="mkt-hero__accent">bajo control total.</span>
+          </h1>
+          <p class="mkt-hero__lead">
+            Una plataforma para dirigir flota, costos y clientes con claridad — en un solo lugar.
+          </p>
+          <div class="mkt-hero__cta">
+            <a class="mkt-btn mkt-btn--primary" routerLink="/login">
+              Comienza ahora
+              <to-icon name="tracking" [size]="16" />
+            </a>
+            <button type="button" class="mkt-btn mkt-btn--ghost">Contactar ventas</button>
+          </div>
+        </div>
+
+        <div class="mkt-hero__visual" aria-hidden="true">
+          <div class="mkt-dash">
+            <div class="mkt-dash__chrome">
+              <span class="mkt-dash__dot"></span>
+              <span class="mkt-dash__dot"></span>
+              <span class="mkt-dash__dot"></span>
+              <span class="mkt-dash__url">app.terminalops · dashboard</span>
+            </div>
+            <div class="mkt-dash__body">
+              <aside class="mkt-dash__rail">
+                <div class="mkt-dash__rail-brand"></div>
+                <div class="mkt-dash__rail-item mkt-dash__rail-item--active"></div>
+                <div class="mkt-dash__rail-item"></div>
+                <div class="mkt-dash__rail-item"></div>
+                <div class="mkt-dash__rail-item"></div>
+              </aside>
+              <div class="mkt-dash__content">
+                <div class="mkt-dash__toolbar"></div>
+                <div class="mkt-dash__kpis">
+                  <div class="mkt-dash__kpi mkt-dash__kpi--accent"></div>
+                  <div class="mkt-dash__kpi"></div>
+                  <div class="mkt-dash__kpi"></div>
+                  <div class="mkt-dash__kpi"></div>
+                </div>
+                <div class="mkt-dash__panels">
+                  <div class="mkt-dash__chart">
+                    <div class="mkt-dash__bars">
+                      <span style="--h: 48%"></span>
+                      <span style="--h: 72%"></span>
+                      <span style="--h: 58%"></span>
+                      <span style="--h: 86%"></span>
+                      <span style="--h: 64%"></span>
+                      <span style="--h: 92%"></span>
+                      <span style="--h: 70%"></span>
+                    </div>
+                  </div>
+                  <div class="mkt-dash__list">
+                    <div class="mkt-dash__row"></div>
+                    <div class="mkt-dash__row"></div>
+                    <div class="mkt-dash__row"></div>
+                    <div class="mkt-dash__row"></div>
+                    <div class="mkt-dash__row"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mkt-features" aria-labelledby="mkt-features-title">
+      <div class="mkt-container">
+        <div class="mkt-features__head">
+          <h2 id="mkt-features-title" class="mkt-section-title">
+            Flexible para tu forma de operar
+          </h2>
+          <p class="mkt-section-lead">
+            TerminalOps no impone un único método de trabajo. Adapta módulos, flujos y visibilidad a
+            tu operación — y evoluciona cuando tu negocio lo haga.
+          </p>
+        </div>
+
+        <ul class="mkt-features__grid">
+          @for (feature of features; track feature.title) {
+            <li class="mkt-feature">
+              <div class="mkt-feature__icon" aria-hidden="true">
+                <to-icon [name]="feature.icon" [size]="20" />
+              </div>
+              <h3 class="mkt-feature__title">{{ feature.title }}</h3>
+              <p class="mkt-feature__desc">{{ feature.description }}</p>
+            </li>
+          }
+        </ul>
+      </div>
+    </section>
+
+    <section class="mkt-pillar" aria-labelledby="mkt-ops-title">
+      <div class="mkt-container mkt-pillar__inner">
+        <div class="mkt-pillar__copy">
+          <p class="mkt-eyebrow">Inteligencia operativa</p>
+          <h2 id="mkt-ops-title" class="mkt-section-title">
+            Decisiones impulsadas por IA sobre diésel, kilómetros y flota
+          </h2>
+          <p class="mkt-section-lead">
+            TerminalOps interpreta señales de tu operación para anticipar desviaciones y priorizar
+            acciones. Menos intuición suelta; más decisiones con contexto.
+          </p>
+          <ul class="mkt-pillar__bullets">
+            @for (point of operationPoints; track point) {
+              <li>{{ point }}</li>
+            }
+          </ul>
+        </div>
+
+        <div class="mkt-map" aria-hidden="true">
+          <div class="mkt-map__chrome">
+            <span class="mkt-map__chip">Rutas · México</span>
+            <span class="mkt-map__chip mkt-map__chip--soft">IA activa</span>
+          </div>
+          <svg class="mkt-map__svg" viewBox="0 0 420 280" role="img">
+            <!-- Simplified Mexico silhouette -->
+            <path
+              class="mkt-map__land"
+              d="M78 72c28-18 62-28 98-30 34-2 68 4 98 18 22 10 44 18 68 16 18-2 34 8 42 24 6 12 4 28-4 38-10 14-28 20-44 26-18 6-34 18-42 36-8 16-22 28-40 32-20 4-40-2-58-10-22-10-46-12-68-6-24 6-48 4-68-10-16-12-24-32-22-52 2-18 12-34 28-42 4-2 8-8 10-12z"
+            />
+            <path
+              class="mkt-map__peninsula"
+              d="M318 148c18 2 34 14 40 30 4 12 2 26-6 36-10 12-26 16-40 14-12-2-22-10-28-20-8-14-6-32 4-44 8-8 18-14 30-16z"
+            />
+            <!-- Routes -->
+            <path class="mkt-map__route" d="M120 120 C170 110, 210 130, 250 118 S310 100, 340 128" />
+            <path class="mkt-map__route mkt-map__route--alt" d="M140 160 C190 150, 230 170, 280 155 S330 150, 360 168" />
+            <path class="mkt-map__route" d="M160 200 C200 190, 240 205, 290 195" />
+            <!-- Nodes -->
+            <circle class="mkt-map__node" cx="120" cy="120" r="5" />
+            <circle class="mkt-map__node mkt-map__node--hot" cx="250" cy="118" r="5.5" />
+            <circle class="mkt-map__node" cx="340" cy="128" r="5" />
+            <circle class="mkt-map__node" cx="160" cy="200" r="4.5" />
+            <circle class="mkt-map__node mkt-map__node--hot" cx="290" cy="195" r="5" />
+            <circle class="mkt-map__node" cx="360" cy="168" r="4.5" />
+          </svg>
+          <div class="mkt-map__legend">
+            <span><i class="mkt-map__dot"></i> Corredores activos</span>
+            <span><i class="mkt-map__dot mkt-map__dot--hot"></i> Prioridad IA</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mkt-pillar mkt-pillar--alt" aria-labelledby="mkt-biz-title">
+      <div class="mkt-container mkt-pillar__inner mkt-pillar__inner--reverse">
+        <div class="mkt-pillar__copy">
+          <p class="mkt-eyebrow">Negocio</p>
+          <h2 id="mkt-biz-title" class="mkt-section-title">
+            Crecimiento comercial con control de cartera
+          </h2>
+          <p class="mkt-section-lead">
+            Conecta relaciones con clientes, condiciones de servicio y resultados en una capa
+            comercial pensada para terminales que escalan con disciplina.
+          </p>
+          <ul class="mkt-pillar__bullets">
+            @for (point of businessPoints; track point) {
+              <li>{{ point }}</li>
+            }
+          </ul>
+        </div>
+
+        <div class="mkt-portfolio" aria-hidden="true">
+          <div class="mkt-portfolio__head">
+            <span class="mkt-portfolio__title">Cartera de clientes</span>
+            <span class="mkt-portfolio__badge">Activa</span>
+          </div>
+          <div class="mkt-portfolio__summary">
+            <div>
+              <small>Cuentas</small>
+              <strong>48</strong>
+            </div>
+            <div>
+              <small>En seguimiento</small>
+              <strong>12</strong>
+            </div>
+            <div>
+              <small>Salud media</small>
+              <strong>92%</strong>
+            </div>
+          </div>
+          <div class="mkt-portfolio__list">
+            <div class="mkt-portfolio__row">
+              <span class="mkt-portfolio__avatar">AC</span>
+              <span class="mkt-portfolio__meta">
+                <b>Atlas Cargo</b>
+                <i>Corredor Norte · al corriente</i>
+              </span>
+              <span class="mkt-portfolio__value">$428k</span>
+            </div>
+            <div class="mkt-portfolio__row">
+              <span class="mkt-portfolio__avatar mkt-portfolio__avatar--b">LM</span>
+              <span class="mkt-portfolio__meta">
+                <b>LogiMax</b>
+                <i>Centro · negociación</i>
+              </span>
+              <span class="mkt-portfolio__value">$291k</span>
+            </div>
+            <div class="mkt-portfolio__row">
+              <span class="mkt-portfolio__avatar mkt-portfolio__avatar--c">PR</span>
+              <span class="mkt-portfolio__meta">
+                <b>Puerto Red</b>
+                <i>Pacífico · expansión</i>
+              </span>
+              <span class="mkt-portfolio__value">$516k</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mkt-mobile" aria-labelledby="mkt-mobile-title">
+      <div class="mkt-container mkt-mobile__inner">
+        <div class="mkt-mobile__copy">
+          <p class="mkt-eyebrow">Movilidad</p>
+          <h2 id="mkt-mobile-title" class="mkt-section-title">
+            Operación continua, donde estés
+          </h2>
+          <p class="mkt-section-lead">
+            Accede al estado de tu operación desde el celular y mantén continuidad sin depender del
+            escritorio.
+          </p>
+          <ul class="mkt-mobile__bullets">
+            @for (point of mobilePoints; track point) {
+              <li>{{ point }}</li>
+            }
+          </ul>
+        </div>
+
+        <div class="mkt-mobile__visual" aria-hidden="true">
+          <div class="mkt-phone">
+            <div class="mkt-phone__notch"></div>
+            <div class="mkt-phone__screen">
+              <div class="mkt-phone__status">
+                <span>9:41</span>
+                <span class="mkt-phone__status-bars"></span>
+              </div>
+              <div class="mkt-phone__header">
+                <div class="mkt-phone__logo"></div>
+                <div class="mkt-phone__title-bar"></div>
+              </div>
+              <div class="mkt-phone__card mkt-phone__card--accent">
+                <div class="mkt-phone__card-label"></div>
+                <div class="mkt-phone__card-value"></div>
+              </div>
+              <div class="mkt-phone__list">
+                <div class="mkt-phone__row">
+                  <span class="mkt-phone__avatar"></span>
+                  <span class="mkt-phone__lines"><i></i><i></i></span>
+                  <span class="mkt-phone__badge"></span>
+                </div>
+                <div class="mkt-phone__row">
+                  <span class="mkt-phone__avatar"></span>
+                  <span class="mkt-phone__lines"><i></i><i></i></span>
+                  <span class="mkt-phone__badge mkt-phone__badge--soft"></span>
+                </div>
+                <div class="mkt-phone__row">
+                  <span class="mkt-phone__avatar"></span>
+                  <span class="mkt-phone__lines"><i></i><i></i></span>
+                  <span class="mkt-phone__badge"></span>
+                </div>
+              </div>
+              <div class="mkt-phone__tabbar">
+                <span></span>
+                <span class="is-active"></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mkt-secure" aria-labelledby="mkt-secure-title">
+      <div class="mkt-container mkt-secure__inner">
+        <div class="mkt-secure__copy">
+          <p class="mkt-eyebrow">Evidencia y confianza</p>
+          <h2 id="mkt-secure-title" class="mkt-section-title">
+            Protegido ante tus clientes con evidencia verificable
+          </h2>
+          <p class="mkt-section-lead">
+            Cuando hay una duda comercial o operativa, respondes con historial y documentos — no con
+            memoria. TerminalOps guarda la evidencia que respalda tu servicio.
+          </p>
+          <ul class="mkt-secure__cards">
+            @for (item of evidencePoints; track item.title) {
+              <li>
+                <to-icon [name]="item.icon" [size]="18" />
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <span>{{ item.description }}</span>
+                </div>
+              </li>
+            }
+          </ul>
+        </div>
+
+        <div class="mkt-evidence" aria-hidden="true">
+          <div class="mkt-evidence__seal">
+            <to-icon name="checkCircle" [size]="22" />
+            <span>Cadena de evidencia</span>
+          </div>
+          <div class="mkt-evidence__stack">
+            <article class="mkt-evidence__doc">
+              <header>
+                <b>Entrega · TR-1842</b>
+                <em>Firmado</em>
+              </header>
+              <p>Evidencia de llegada · cliente Atlas Cargo</p>
+            </article>
+            <article class="mkt-evidence__doc mkt-evidence__doc--mid">
+              <header>
+                <b>Gasto · combustible</b>
+                <em>Auditado</em>
+              </header>
+              <p>Comprobante vinculado al viaje y unidad</p>
+            </article>
+            <article class="mkt-evidence__doc mkt-evidence__doc--back">
+              <header>
+                <b>Acuerdo comercial</b>
+                <em>Vigente</em>
+              </header>
+              <p>Condiciones visibles según acceso autorizado</p>
+            </article>
+          </div>
+          <div class="mkt-evidence__trust">
+            <span>Acceso por roles</span>
+            <span>Historial inmutable</span>
+            <span>Listo para auditoría</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mkt-plans" aria-labelledby="mkt-plans-title">
+      <div class="mkt-container">
+        <div class="mkt-plans__head">
+          <h2 id="mkt-plans-title" class="mkt-plans__title">
+            Planes para cada escala de operación
+          </h2>
+          <p class="mkt-plans__lead">
+            Desde flotas en crecimiento hasta redes complejas: elige la profundidad que potencia tu
+            operación hoy — y escala cuando lo necesites.
+          </p>
+        </div>
+
+        <ul class="mkt-plans__grid">
+          @for (plan of plans; track plan.name) {
+            <li class="mkt-plan">
+              <p class="mkt-plan__audience">{{ plan.audience }}</p>
+              <h3 class="mkt-plan__name">{{ plan.name }}</h3>
+              <p class="mkt-plan__highlight">{{ plan.highlight }}</p>
+            </li>
+          }
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="mkt-footer">
+    <div class="mkt-container mkt-footer__inner">
+      <div class="mkt-footer__brand">
+        <img src="/favicon.png" width="52" height="24" alt="" aria-hidden="true" />
+        <span>TerminalOps</span>
+      </div>
+
+      <nav class="mkt-footer__links" aria-label="Enlaces legales">
+        <a routerLink="/privacidad">Privacidad</a>
+        <a routerLink="/terminos">Términos</a>
+        <a routerLink="/seguridad">Seguridad</a>
+        <a routerLink="/soporte">Soporte</a>
+      </nav>
+
+      <p class="mkt-footer__copy">
+        © {{ currentYear }} Axolotl Technology. Todos los derechos reservados.
+      </p>
+    </div>
+  </footer>
+</div>

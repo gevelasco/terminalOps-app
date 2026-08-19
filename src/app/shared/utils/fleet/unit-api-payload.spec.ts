@@ -38,6 +38,7 @@ describe('unit-api-payload (A6)', () => {
         fleetMeta: {
           gpsLastPaymentDate: '2026-06-01',
           insuranceCost: 7500,
+          trailerTenureMode: 'financed',
         },
       }),
       {
@@ -48,6 +49,42 @@ describe('unit-api-payload (A6)', () => {
     expect(payload.fleetMeta?.insuranceLastPaymentDate).toBe('2026-07-01');
     expect(payload.fleetMeta?.gpsLastPaymentDate).toBeUndefined();
     expect(payload.fleetMeta?.insuranceCost).toBeUndefined();
+    expect(payload.fleetMeta?.trailerTenureMode).toBeUndefined();
+  });
+
+  it('omits fleetMeta on sparse column-only patch', () => {
+    const payload = buildUnitWritePayload(
+      baseUnit({
+        fleetMeta: { insuranceCost: 7500, documentPolicyNames: ['a.pdf'] },
+      }),
+      {
+        sparseFleetMeta: true,
+        unit: { capacityTons: 22 },
+      },
+    );
+    expect(payload.capacityTons).toBe(22);
+    expect(payload.fleetMeta).toBeUndefined();
+  });
+
+  it('strips legacy document name arrays and fleetDocuments on write', () => {
+    const payload = buildUnitWritePayload(
+      baseUnit({
+        fleetMeta: {
+          insuranceCost: 7500,
+          documentPolicyNames: ['a.pdf'],
+          documentMaintenanceNames: ['b.pdf'],
+          fleetDocuments: [
+            { id: 1, fileName: 'a.pdf', documentKind: 'policy' },
+          ],
+          maintenanceKmRemaining: 1000,
+        },
+      }),
+    );
+    expect(payload.fleetMeta?.insuranceCost).toBe(7500);
+    expect(payload.fleetMeta?.documentPolicyNames).toBeUndefined();
+    expect(payload.fleetMeta?.documentMaintenanceNames).toBeUndefined();
+    expect(payload.fleetMeta?.fleetDocuments).toBeUndefined();
+    expect(payload.fleetMeta?.maintenanceKmRemaining).toBeUndefined();
   });
 
   it('keeps maintenanceEntries when draft fleetMeta is partial', () => {

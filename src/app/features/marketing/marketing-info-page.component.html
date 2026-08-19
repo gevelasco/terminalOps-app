@@ -1,0 +1,75 @@
+<div class="info">
+  <header class="info-nav">
+    <div class="info-container info-nav__inner">
+      <a class="info-nav__brand" routerLink="/en-mx" aria-label="TerminalOps">
+        <img src="/favicon.png" width="72" height="34" alt="" aria-hidden="true" />
+        <span>TerminalOps</span>
+      </a>
+      <div class="info-nav__actions">
+        <a class="info-nav__login" routerLink="/login">Iniciar sesión</a>
+        <a class="info-nav__back" routerLink="/en-mx">Volver al inicio</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="info-main">
+    <div class="info-container">
+      <p class="info-eyebrow">Legal y confianza</p>
+      <h1 class="info-title">{{ page().title }}</h1>
+      <p class="info-lead">{{ page().description }}</p>
+      <p class="info-updated">{{ page().updatedLabel }}</p>
+
+      <nav class="info-tabs" aria-label="Documentos relacionados">
+        @for (link of navLinks; track link.path) {
+          <a
+            [routerLink]="link.path"
+            class="info-tabs__link"
+            routerLinkActive="is-active"
+            >{{ link.label }}</a
+          >
+        }
+      </nav>
+
+      <div class="info-body">
+        @for (section of page().sections; track section.heading) {
+          <section class="info-section">
+            <h2>{{ section.heading }}</h2>
+            @for (paragraph of section.paragraphs; track paragraph) {
+              <p>{{ paragraph }}</p>
+            }
+            @if (section.bullets?.length) {
+              <ul>
+                @for (item of section.bullets; track item) {
+                  <li>{{ item }}</li>
+                }
+              </ul>
+            }
+          </section>
+        }
+      </div>
+
+      <p class="info-disclaimer">
+        Este contenido no constituye asesoría legal. Para obligaciones
+        específicas de tu organización, consulta a tu asesor legal o solicita documentación
+        contractual a Axolotl Technology.
+      </p>
+    </div>
+  </main>
+
+  <footer class="info-footer">
+    <div class="info-container info-footer__inner">
+      <div class="info-footer__brand">
+        <img src="/favicon.png" width="52" height="24" alt="" aria-hidden="true" />
+        <span>TerminalOps</span>
+      </div>
+      <nav class="info-footer__links" aria-label="Enlaces legales">
+        @for (link of navLinks; track link.path) {
+          <a [routerLink]="link.path">{{ link.label }}</a>
+        }
+      </nav>
+      <p class="info-footer__copy">
+        © {{ currentYear }} Axolotl Technology. Todos los derechos reservados.
+      </p>
+    </div>
+  </footer>
+</div>

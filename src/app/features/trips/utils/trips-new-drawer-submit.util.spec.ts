@@ -126,7 +126,15 @@ describe('trips-new-drawer-submit.util', () => {
     expect(res.payload.dieselLiters).toBe('100');
     expect(res.payload.creditDays).toBe(15);
     expect(res.payload.equipmentIds).toEqual(['eq-1']);
-    expect(res.payload.operationConfigurationId).toBe('cfg-1');
+    expect(
+      Object.prototype.hasOwnProperty.call(res.payload, 'equipment'),
+    ).toBe(false);
+    expect(
+      Object.prototype.hasOwnProperty.call(
+        res.payload,
+        'operationConfigurationId',
+      ),
+    ).toBe(false);
   });
 
   it('requires both equipment ids for multi-equipment ops', () => {

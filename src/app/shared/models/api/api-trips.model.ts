@@ -17,8 +17,6 @@ import type {
  */
 export interface CreateTripPayload {
   operationType: string;
-  /** FK a configuración operativa viva. */
-  operationConfigurationId?: string;
   loadType: TripLoadType;
   containerType: TripContainerType;
   cargoDescription: string;
@@ -41,7 +39,6 @@ export interface CreateTripPayload {
   unitId: string;
   clientName?: string;
   clientId?: string;
-  equipment: string[];
   equipmentIds: string[];
   /** Salida planificada (planned_departure_at). */
   plannedDepartureAt: string;

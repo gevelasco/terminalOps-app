@@ -12,7 +12,7 @@ import {
 } from '@features/trips/utils/trips-map-tooltip.util';
 import {
   computeDestinationRatesMapViewport,
-  countDestinationRatesByState,
+  countDestinationRateRoutesByState,
 } from '@features/clients/utils/destination-rates-map-activity';
 import { formatDestinationRatesStateTooltipHtml } from '@features/clients/utils/destination-rates-map-tooltip';
 
@@ -20,17 +20,17 @@ export function buildDestinationRatesMapEchartsOption(
   rates: readonly DestinationRate[],
   geoJson: MexicoStatesGeoJson | null | undefined,
 ): EChartsOption {
-  const destinationCounts = geoJson
-    ? countDestinationRatesByState(rates, geoJson)
+  const routeCounts = geoJson
+    ? countDestinationRateRoutesByState(rates, geoJson)
     : new Map<string, number>();
   const stateRegions = buildGeoRegionsForStateActivity(
     new Map(),
-    destinationCounts,
+    routeCounts,
   );
   const viewport = computeDestinationRatesMapViewport(rates, geoJson);
 
   const formatStateTooltip = (stateName: string): string => {
-    const count = destinationCounts.get(stateName) ?? 0;
+    const count = routeCounts.get(stateName) ?? 0;
     if (count <= 0) {
       return '';
     }

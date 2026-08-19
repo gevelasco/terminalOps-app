@@ -7,14 +7,14 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { catchError, finalize, of } from 'rxjs';
+import { catchError, finalize, forkJoin, of, switchMap, type Observable } from 'rxjs';
 import { ToastService } from '@core/notifications/toast.service';
+import { ClientsService as ClientsApiService } from '@core/services/api/clients';
 import { TripsService as TripsApiService } from '@core/services/api/trips';
 import { SessionService } from '@core/services/state/session';
 import { APP_MODULE_CODES } from '@shared/models/app-modules.models';
 import { ClientsFeatureService } from '@features/clients/services/clients.service';
 import { ClientsBalanceContextService } from '@features/clients/services/clients-balance-context.service';
-import { filesToClientDocuments } from '@features/clients/utils/client-attached-documents';
 import {
   boolToYesNo,
   buildClientDeliveryPayload,
@@ -55,6 +55,7 @@ export type ClientDrawerTab = 'details' | 'balance';
 export class ClientsDetailDrawerFacade {
   private readonly destroyRef = inject(DestroyRef);
   private readonly clientsFeature = inject(ClientsFeatureService);
+  private readonly clientsApi = inject(ClientsApiService);
   private readonly balanceContext = inject(ClientsBalanceContextService);
   private readonly tripsApi = inject(TripsApiService);
   private readonly operationConfigsFeature = inject(OperationConfigurationsFeatureService);
@@ -114,6 +115,9 @@ export class ClientsDetailDrawerFacade {
   readonly billEmail = signal('');
   readonly billPhone = signal('');
   readonly editDocuments = signal<ClientAttachedDocument[]>([]);
+  readonly editNewFilesFiscal = signal<File[]>([]);
+  /** Snapshot al abrir edición fiscal (para detectar deletes). */
+  private originalFiscalDocuments: ClientAttachedDocument[] = [];
 
   readonly fiscalDocuments = computed(() =>
     (this.client().documents ?? []).filter((d) => d.slot === 'fiscal'),
@@ -550,11 +554,17 @@ export class ClientsDetailDrawerFacade {
       return;
     }
     this.patchFormFromClient(this.client());
+    if (section === 'fiscal') {
+      this.originalFiscalDocuments = [...(this.client().documents ?? [])];
+      this.editNewFilesFiscal.set([]);
+    }
     this.editingSection.set(section);
   }
 
   cancelSectionEdit(): void {
     this.patchFormFromClient(this.client());
+    this.editNewFilesFiscal.set([]);
+    this.originalFiscalDocuments = [];
     this.editingSection.set(null);
     this.cancelContactForm();
   }
@@ -631,10 +641,7 @@ export class ClientsDetailDrawerFacade {
     if (!list.length) {
       return;
     }
-    this.editDocuments.update((prev) => [
-      ...prev,
-      ...filesToClientDocuments(list, 'fiscal'),
-    ]);
+    this.editNewFilesFiscal.update((prev) => [...prev, ...list]);
     input.value = '';
   }
 
@@ -642,12 +649,82 @@ export class ClientsDetailDrawerFacade {
     this.editDocuments.update((prev) => prev.filter((d) => d.id !== id));
   }
 
+  removeEditNewFile(index: number): void {
+    this.editNewFilesFiscal.update((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  downloadClientDocument(d: ClientAttachedDocument): void {
+    const documentId = Number(d.id);
+    if (!Number.isInteger(documentId) || documentId < 1) {
+      this.toast.show(
+        'Este documento aún no está en el almacenamiento (vuelve a subirlo).',
+        'info',
+      );
+      return;
+    }
+    if (d.hasStoredFile === false) {
+      this.toast.show(
+        'Este documento solo tiene nombre registrado; súbelo de nuevo para poder descargarlo.',
+        'info',
+      );
+      return;
+    }
+    this.clientsApi
+      .downloadClientDocument(this.client().id, documentId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: ({ url }) => {
+          const a = document.createElement('a');
+          a.href = url;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.download = d.fileName || 'documento';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        },
+        error: () => {
+          this.toast.show('No se pudo descargar el documento.', 'error');
+        },
+      });
+  }
+
+  private syncClientDocuments(
+    kept: readonly ClientAttachedDocument[],
+    newFiles: readonly File[],
+    original: readonly ClientAttachedDocument[],
+  ): Observable<unknown> {
+    const clientId = this.client().id;
+    const keptIds = new Set(
+      kept
+        .map((d) => Number(d.id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    );
+    const deletes = original
+      .filter((d) => {
+        const id = Number(d.id);
+        return Number.isInteger(id) && id > 0 && !keptIds.has(id);
+      })
+      .map((d) => this.clientsApi.deleteClientDocument(clientId, Number(d.id)));
+    const uploads = newFiles.map((file) =>
+      this.clientsApi.uploadClientDocument(clientId, 'fiscal', file),
+    );
+    const ops = [...deletes, ...uploads];
+    return ops.length === 0 ? of(null) : forkJoin(ops);
+  }
+
   displayIsoDate(ymd: string | undefined): string {
     return this.formatYmdEs(ymd);
   }
 
   saveFiscal(): void {
+    if (this.saving()) {
+      return;
+    }
     const base = this.client();
+    const kept = this.editDocuments();
+    const newFiles = this.editNewFilesFiscal();
+    const original = this.originalFiscalDocuments;
     const updated: Client = {
       ...base,
       billing: {
@@ -658,9 +735,26 @@ export class ClientsDetailDrawerFacade {
         billingEmail: this.billEmail().trim() || undefined,
         billingPhone: this.billPhone().trim() || undefined,
       },
-      documents: [...this.editDocuments()],
     };
-    this.persistClient(updated);
+    this.saving.set(true);
+    this.syncClientDocuments(kept, newFiles, original)
+      .pipe(
+        switchMap(() => this.clientsFeature.updateClient(updated)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: () => {
+          this.editNewFilesFiscal.set([]);
+          this.saving.set(false);
+          this.toast.show('Cliente actualizado.', 'success');
+          this.editingSection.set(null);
+          this.cancelContactForm();
+        },
+        error: () => {
+          this.saving.set(false);
+          this.toast.show('No se pudo guardar.', 'error');
+        },
+      });
   }
 
   saveDelivery(): void {

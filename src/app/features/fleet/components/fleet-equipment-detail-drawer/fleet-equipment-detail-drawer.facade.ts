@@ -26,6 +26,7 @@ import {
   companyMaintenancePolicyFromSession,
 } from '@shared/models/company-operational-settings.models';
 import type { EquipmentPersistDraft } from '@shared/utils/fleet/equipment-api-payload';
+import { resolveEquipmentPersistDraft } from '@shared/utils/fleet/fleet-persist-draft';
 import type { UnitPersistDraft } from '@shared/utils/fleet/unit-api-payload';
 import {
   trackFileEntry,
@@ -597,10 +598,20 @@ export class FleetEquipmentDetailDrawerFacade {
     options?: FleetPersistOptions,
   ): void {
     if (this.saving()) return;
-    const equipmentToSend = this.domain.equipmentForPersist(this.effEquipment(), this.localMaintEntries(), draft);
+    const localMaint = this.localMaintEntries();
+    const equipmentToSend = this.domain.equipmentForPersist(
+      this.effEquipment(),
+      localMaint,
+      draft,
+    );
+    const effectiveDraft = resolveEquipmentPersistDraft(
+      draft,
+      equipmentToSend,
+      localMaint.length > 0,
+    );
     this.saving.set(true);
     this.equipmentFeature
-      .updateEquipment(equipmentToSend, draft, { skipListRefresh: true })
+      .updateEquipment(equipmentToSend, effectiveDraft, { skipListRefresh: true })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (saved) => {
@@ -1541,7 +1552,10 @@ export class FleetEquipmentDetailDrawerFacade {
   }
 
   private resetTractorMaintenanceKmCounter(tractor: Unit): void {
-    const draft: UnitPersistDraft = { fleetMeta: { maintenanceKmCounter: 0 } };
+    const draft: UnitPersistDraft = {
+      sparseFleetMeta: true,
+      fleetMeta: { maintenanceKmCounter: 0 },
+    };
     const unitToSend: Unit = {
       ...tractor,
       fleetMeta: { ...(tractor.fleetMeta ?? {}), maintenanceKmCounter: 0 },

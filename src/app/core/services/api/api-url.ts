@@ -10,7 +10,7 @@ export function requireCompanyId(companyId: string | null | undefined): string {
 export function companyResourceUrl(
   companyId: string,
   segment: string,
-  query?: Record<string, string | boolean | undefined>,
+  query?: Record<string, string | number | boolean | undefined>,
 ): string {
   const path = segment.replace(/^\//, '');
   const base = `${environment.apiUrl}/companies/${companyId}/${path}`;

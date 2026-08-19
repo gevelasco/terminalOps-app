@@ -49,6 +49,34 @@ describe('equipment-api-payload', () => {
     expect('status' in (payload as object)).toBe(false);
   });
 
+  it('sends sparse fleetMeta without merging base meta', () => {
+    const payload = buildEquipmentWritePayload(
+      baseEquipment({
+        fleetMeta: {
+          insuranceCost: 4000,
+          trailerTenureMode: 'leased',
+        },
+      }),
+      {
+        sparseFleetMeta: true,
+        fleetMeta: { insurancePolicyNumber: 'POL-1' },
+      },
+    );
+    expect(payload.fleetMeta?.insurancePolicyNumber).toBe('POL-1');
+    expect(payload.fleetMeta?.insuranceCost).toBeUndefined();
+    expect(payload.fleetMeta?.trailerTenureMode).toBeUndefined();
+  });
+
+  it('applies equipment patch when sparse without fleetMeta', () => {
+    const payload = buildEquipmentWritePayload(baseEquipment(), {
+      sparseFleetMeta: true,
+      equipment: { unitId: '', hitchPosition: null },
+    });
+    expect(payload.unitId).toBeNull();
+    expect(payload.hitchPosition).toBeNull();
+    expect(payload.fleetMeta).toBeUndefined();
+  });
+
   it('keeps maintenanceEntries when draft fleetMeta is partial', () => {
     const payload = buildEquipmentWritePayload(
       baseEquipment({

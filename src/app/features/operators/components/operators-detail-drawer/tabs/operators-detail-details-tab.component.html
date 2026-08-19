@@ -468,6 +468,30 @@
                   </li>
                 }
               </ul>
+            } @else {
+              <p class="fleet-unit-detail__empty-files">
+                Sin documentos en la lista (puedes agregar abajo).
+              </p>
+            }
+            @if (vm.editNewFilesInsurance().length > 0) {
+              <ul class="fleet-unit-files">
+                @for (
+                  f of vm.editNewFilesInsurance();
+                  track vm.trackFileEntry($index, f)
+                ) {
+                  <li class="fleet-unit-files__row">
+                    <span class="fleet-unit-files__name">{{ f.name }}</span>
+                    <button
+                      type="button"
+                      class="fleet-unit-files__rm"
+                      aria-label="Quitar archivo"
+                      (click)="vm.removeEditNewFile('insurance', $index)"
+                    >
+                      <to-icon name="delete" [size]="16" />
+                    </button>
+                  </li>
+                }
+              </ul>
             }
             </div>
             <div class="fleet-unit-sec__edit-actions">

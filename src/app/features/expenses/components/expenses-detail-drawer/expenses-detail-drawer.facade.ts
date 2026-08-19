@@ -1,5 +1,6 @@
 import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { forkJoin, of, switchMap, type Observable } from 'rxjs';
 import { ToastService } from '@core/notifications/toast.service';
 import {
   ExpensesService,
@@ -42,10 +43,6 @@ import type {
 } from '@shared/models/logistics.models';
 import { CurrencyMxPipe } from '@shared/pipes/currency-mx.pipe';
 import { formatExpenseIncurredDateDisplay } from '@features/expenses/utils/expenses-form.util';
-import {
-  filesToExpenseDocuments,
-  toExpenseDocumentsApiPayload,
-} from '@features/expenses/utils/expense-attached-documents';
 import { isAdminRole } from '@shared/utils/access-control';
 import { APP_MODULE_CODES } from '@shared/models/app-modules.models';
 import { parseHttpApiErrorMessage } from '@shared/utils/http-api-error';
@@ -106,6 +103,8 @@ export class ExpensesDetailDrawerFacade {
   readonly paymentMethod = signal('');
   readonly incurredAt = signal('');
   readonly editDocuments = signal<ExpenseAttachedDocument[]>([]);
+  readonly editNewFiles = signal<File[]>([]);
+  private originalPaymentDocuments: ExpenseAttachedDocument[] = [];
   readonly tripId = signal('');
   readonly relatedUnitId = signal('');
   readonly relatedEquipmentId = signal('');
@@ -217,6 +216,10 @@ export class ExpensesDetailDrawerFacade {
       return;
     }
     this.patchFormFromExpense(e);
+    if (section === 'payment') {
+      this.originalPaymentDocuments = [...(e.documents ?? [])];
+      this.editNewFiles.set([]);
+    }
     this.editingSection.set(section);
   }
 
@@ -225,6 +228,8 @@ export class ExpensesDetailDrawerFacade {
     if (e) {
       this.patchFormFromExpense(e);
     }
+    this.editNewFiles.set([]);
+    this.originalPaymentDocuments = [];
     this.editingSection.set(null);
   }
 
@@ -285,14 +290,43 @@ export class ExpensesDetailDrawerFacade {
       this.toast.show('Indica la fecha del gasto.', 'warning');
       return;
     }
-    this.persistPatch({
-      amount: amountResult,
-      currency: this.currency(),
-      incurredAt: date,
-      paymentMethod: this.paymentMethod().trim() || undefined,
-      vendor: this.vendor().trim() || undefined,
-      documents: toExpenseDocumentsApiPayload(this.editDocuments()),
-    });
+    const e = this.expense();
+    if (!e || this.saving()) {
+      return;
+    }
+    const kept = this.editDocuments();
+    const newFiles = this.editNewFiles();
+    const original = this.originalPaymentDocuments;
+    this.saving.set(true);
+    this.syncExpenseDocuments(e.id, kept, newFiles, original)
+      .pipe(
+        switchMap(() =>
+          this.expensesApi.patchExpense(e.id, {
+            amount: amountResult,
+            currency: this.currency(),
+            incurredAt: date,
+            paymentMethod: this.paymentMethod().trim() || undefined,
+            vendor: this.vendor().trim() || undefined,
+          }),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (row) => {
+          this.editNewFiles.set([]);
+          this.originalPaymentDocuments = [];
+          this.expense.set(row);
+          this.patchFormFromExpense(row);
+          this.editingSection.set(null);
+          this.saving.set(false);
+          this.toast.show('Gasto actualizado.', 'success');
+          this.onUpdated?.(row);
+        },
+        error: () => {
+          this.saving.set(false);
+          this.toast.show('No se pudo actualizar el gasto.', 'error');
+        },
+      });
   }
 
   onEditDocumentsSelected(ev: Event): void {
@@ -302,14 +336,79 @@ export class ExpensesDetailDrawerFacade {
     if (files.length === 0) {
       return;
     }
-    this.editDocuments.update((prev) => [
-      ...prev,
-      ...filesToExpenseDocuments(files, 'receipt'),
-    ]);
+    this.editNewFiles.update((prev) => [...prev, ...files]);
   }
 
   removeEditDocument(id: string): void {
     this.editDocuments.update((prev) => prev.filter((d) => d.id !== id));
+  }
+
+  removeEditNewFile(index: number): void {
+    this.editNewFiles.update((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  downloadExpenseDocument(d: ExpenseAttachedDocument): void {
+    const e = this.expense();
+    if (!e) {
+      return;
+    }
+    const documentId = Number(d.id);
+    if (!Number.isInteger(documentId) || documentId < 1) {
+      this.toast.show(
+        'Este documento aún no está en el almacenamiento (vuelve a subirlo).',
+        'info',
+      );
+      return;
+    }
+    if (d.hasStoredFile === false) {
+      this.toast.show(
+        'Este documento solo tiene nombre registrado; súbelo de nuevo para poder descargarlo.',
+        'info',
+      );
+      return;
+    }
+    this.expensesApi
+      .downloadExpenseDocument(e.id, documentId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: ({ url }) => {
+          const a = document.createElement('a');
+          a.href = url;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.download = d.fileName || 'documento';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        },
+        error: () => {
+          this.toast.show('No se pudo descargar el documento.', 'error');
+        },
+      });
+  }
+
+  private syncExpenseDocuments(
+    expenseId: string,
+    kept: readonly ExpenseAttachedDocument[],
+    newFiles: readonly File[],
+    original: readonly ExpenseAttachedDocument[],
+  ): Observable<unknown> {
+    const keptIds = new Set(
+      kept
+        .map((d) => Number(d.id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    );
+    const deletes = original
+      .filter((d) => {
+        const id = Number(d.id);
+        return Number.isInteger(id) && id > 0 && !keptIds.has(id);
+      })
+      .map((d) => this.expensesApi.deleteExpenseDocument(expenseId, Number(d.id)));
+    const uploads = newFiles.map((file) =>
+      this.expensesApi.uploadExpenseDocument(expenseId, 'receipt', file),
+    );
+    const ops = [...deletes, ...uploads];
+    return ops.length === 0 ? of(null) : forkJoin(ops);
   }
 
   rubroLabel(): string {

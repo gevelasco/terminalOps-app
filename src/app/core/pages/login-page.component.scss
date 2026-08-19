@@ -34,8 +34,17 @@
 .login-page__brand {
   display: flex;
   align-items: center;
-  gap: 1rem;
   padding: 0 0.25rem;
+}
+
+.login-page__brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
 }
 
 .login-page__logo {
@@ -43,8 +52,9 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 3.25rem;
-  height: 3.25rem;
+  width: 8.5rem;
+  height: 4.25rem;
+  padding: 0.4rem 0.55rem;
   border-radius: var(--to-radius-lg);
   background: var(--shell-bg, #111827);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -55,8 +65,8 @@
 
 .login-page__logo-img {
   display: block;
-  width: 2.75rem;
-  height: 2.75rem;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
 }
 

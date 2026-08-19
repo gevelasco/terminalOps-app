@@ -32,6 +32,8 @@ export interface ClientAttachedDocument {
   slot: ClientDocumentSlot;
   /** Fecha de registro (ISO `YYYY-MM-DD`). */
   addedAt: string;
+  /** True when the binary exists in object storage (downloadable). */
+  hasStoredFile?: boolean;
 }
 
 /**

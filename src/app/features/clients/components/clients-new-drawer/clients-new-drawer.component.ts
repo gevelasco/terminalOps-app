@@ -11,8 +11,9 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { catchError, forkJoin, of, switchMap, throwError } from 'rxjs';
 import { ToastService } from '@core/notifications/toast.service';
-import { filesToClientDocuments } from '@features/clients/utils/client-attached-documents';
+import { ClientsService as ClientsApiService } from '@core/services/api/clients';
 import {
   boolToYesNo,
   buildClientDeliveryPayload,
@@ -26,7 +27,6 @@ import { CLIENT_YES_NO_OPTIONS } from '@shared/catalogs/client-form-options';
 import { TRIP_MANEUVER_PAYMENT_METHOD_OPTIONS } from '@shared/catalogs/trip-client-payment-options';
 import type {
   Client,
-  ClientAttachedDocument,
   CreateClientPayload,
 } from '@shared/models/client.models';
 import { ClientContactInlineFieldsComponent } from '../client-contact-inline-fields/client-contact-inline-fields.component';
@@ -64,11 +64,13 @@ import { ToSelectOption } from '@shared/ui/to-select/to-select.component';
 export class ClientsNewDrawerComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly clientsFeature = inject(ClientsFeatureService);
+  private readonly clientsApi = inject(ClientsApiService);
   private readonly toast = inject(ToastService);
 
   readonly dismiss = output<void>();
   readonly drawerLoading = signal(true);
   readonly saved = output<Client>();
+  readonly saving = signal(false);
 
   readonly yesNoOptions: ToSelectOption[] = CLIENT_YES_NO_OPTIONS;
   readonly paymentMethodOptions: ToSelectOption[] = TRIP_MANEUVER_PAYMENT_METHOD_OPTIONS;
@@ -84,7 +86,7 @@ export class ClientsNewDrawerComponent {
   readonly billCfdi = model('');
   readonly billEmail = model('');
   readonly billPhone = model('');
-  readonly documents = signal<ClientAttachedDocument[]>([]);
+  readonly filesFiscal = signal<File[]>([]);
 
   readonly showDeliveryForm = signal(false);
   readonly deliveryCp = model('');
@@ -145,15 +147,12 @@ export class ClientsNewDrawerComponent {
     if (!list.length) {
       return;
     }
-    this.documents.update((prev) => [
-      ...prev,
-      ...filesToClientDocuments(list, 'fiscal'),
-    ]);
+    this.filesFiscal.update((prev) => [...prev, ...list]);
     input.value = '';
   }
 
-  removeDocument(id: string): void {
-    this.documents.update((prev) => prev.filter((d) => d.id !== id));
+  removeDocument(index: number): void {
+    this.filesFiscal.update((prev) => prev.filter((_, i) => i !== index));
   }
 
   submit(): void {
@@ -204,6 +203,8 @@ export class ClientsNewDrawerComponent {
     };
     const hasBilling = Object.values(billing).some((v) => v != null && String(v).trim() !== '');
 
+    const pendingUploads = this.filesFiscal();
+
     const payload: CreateClientPayload = {
       name: nameText,
       ...(this.rfc().trim() ? { rfc: this.rfc().trim() } : {}),
@@ -233,7 +234,6 @@ export class ClientsNewDrawerComponent {
             },
           ])
         : [],
-      documents: [...this.documents()],
       payment: {
         hasCredit: hasCr,
         ...(hasCr && days != null ? { creditDays: days } : {}),
@@ -244,16 +244,64 @@ export class ClientsNewDrawerComponent {
       },
     };
 
+    this.saving.set(true);
     this.clientsFeature
       .createClient(payload)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        switchMap((created) => {
+          if (pendingUploads.length === 0) {
+            return of(created);
+          }
+          return forkJoin(
+            pendingUploads.map((file) =>
+              this.clientsApi.uploadClientDocument(created.id, 'fiscal', file),
+            ),
+          ).pipe(
+            switchMap(() => of(created)),
+            catchError(() =>
+              throwError(() => ({
+                phase: 'documents' as const,
+                clientId: created.id,
+              })),
+            ),
+          );
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (row) => {
-          this.toast.show('Cliente registrado.', 'success');
+          if (pendingUploads.length > 0) {
+            this.clientsFeature.refreshClients();
+          }
+          this.saving.set(false);
+          this.toast.show(
+            pendingUploads.length > 0
+              ? 'Cliente y documentos registrados.'
+              : 'Cliente registrado.',
+            'success',
+          );
           this.saved.emit(row);
           this.dismiss.emit();
         },
-        error: () => this.toast.show('No se pudo guardar el cliente.', 'error'),
+        error: (err: unknown) => {
+          const docsFailed =
+            typeof err === 'object' &&
+            err !== null &&
+            'phase' in err &&
+            (err as { phase?: string }).phase === 'documents';
+          if (docsFailed) {
+            this.toast.show(
+              'El cliente se creó, pero no se pudieron subir los documentos. Ábrelo y súbelos de nuevo.',
+              'error',
+            );
+            this.clientsFeature.refreshClients();
+            this.saving.set(false);
+            this.dismiss.emit();
+            return;
+          }
+          this.saving.set(false);
+          this.toast.show('No se pudo guardar el cliente.', 'error');
+        },
       });
   }
 

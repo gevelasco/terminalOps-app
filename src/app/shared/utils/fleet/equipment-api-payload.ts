@@ -1,6 +1,9 @@
 import type { CreateEquipmentPayload } from '@shared/models/api/api-fleet.model';
 import type { Equipment, EquipmentFleetMeta } from '@shared/models/logistics.models';
-import { withoutFleetOperationalStatus } from '@shared/utils/fleet/fleet-write-payload-sanitize';
+import {
+  sanitizeFleetMetaForWrite,
+  withoutFleetOperationalStatus,
+} from '@shared/utils/fleet/fleet-write-payload-sanitize';
 import { trailerTenureModeOrDefault } from '@shared/utils/fleet/trailer-tenure-mode';
 
 function fleetMetaWithTenureDefault(
@@ -13,6 +16,19 @@ function fleetMetaWithTenureDefault(
     ...meta,
     trailerTenureMode: trailerTenureModeOrDefault(meta.trailerTenureMode),
   };
+}
+
+/** Sparse: no inyecta `trailerTenureMode` si el borrador no lo toca. */
+function sparseEquipmentFleetMeta(
+  meta: Partial<EquipmentFleetMeta> | undefined,
+): EquipmentFleetMeta | undefined {
+  if (!meta) {
+    return undefined;
+  }
+  if (meta.trailerTenureMode !== undefined) {
+    return fleetMetaWithTenureDefault(meta as EquipmentFleetMeta);
+  }
+  return meta as EquipmentFleetMeta;
 }
 
 export type EquipmentPersistDraft = {
@@ -52,10 +68,18 @@ export function buildEquipmentWritePayload(
   equipment: Equipment,
   draft?: EquipmentPersistDraft,
 ): CreateEquipmentPayload {
-  const merged = mergeEquipmentForWrite(equipment, draft?.sparseFleetMeta ? undefined : draft);
+  const equipmentPatch = draft?.equipment ?? {};
+  const merged = {
+    ...equipment,
+    ...equipmentPatch,
+  };
   const fleetMeta = draft?.sparseFleetMeta
-    ? fleetMetaWithTenureDefault(draft.fleetMeta as EquipmentFleetMeta | undefined)
-    : fleetMetaWithTenureDefault(merged.fleetMeta);
+    ? sparseEquipmentFleetMeta(draft.fleetMeta)
+    : fleetMetaWithTenureDefault(
+        draft?.fleetMeta
+          ? { ...(equipment.fleetMeta ?? {}), ...draft.fleetMeta }
+          : merged.fleetMeta,
+      );
   const name = (merged.name || merged.serialNumber).trim();
   const unitId = unitIdForEquipmentPayload(merged.unitId);
   const hitchPosition = unitId
@@ -74,6 +98,8 @@ export function buildEquipmentWritePayload(
     isActive: merged.isActive !== false,
     trailerBrandAbbr: merged.trailerBrandAbbr?.trim() || undefined,
     trailerYear: merged.trailerYear?.trim() || undefined,
-    fleetMeta,
+    fleetMeta: sanitizeFleetMetaForWrite(
+      fleetMeta as Record<string, unknown> | undefined,
+    ) as EquipmentFleetMeta | undefined,
   }) as CreateEquipmentPayload;
 }

@@ -1,7 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { EMPTY, expand, map, Observable, reduce } from 'rxjs';
-import type { ExpenseDocumentApiPayload } from '@features/expenses/utils/expense-attached-documents';
 import type {
   Expense,
   ExpenseAttachedDocument,
@@ -10,10 +9,8 @@ import type {
 import { SessionService } from '../state/session';
 import { companyResourceUrl, requireCompanyId, resourceByIdUrl } from './api-url';
 
-/** Payload de alta/edición: documentos van en forma API (id numérico opcional). */
-export type ExpenseWritePayload = Omit<Expense, 'id' | 'documents'> & {
-  documents?: ExpenseDocumentApiPayload[];
-};
+/** Payload de alta/edición: binarios van por POST …/documents, no en este JSON. */
+export type ExpenseWritePayload = Omit<Expense, 'id' | 'documents'>;
 
 export interface ExpensesListParams {
   from?: string;
@@ -126,12 +123,29 @@ function mapApiExpenseDocuments(
   if (!Array.isArray(docs)) {
     return undefined;
   }
-  return docs.map((doc) => ({
-    id: normalizeExpensePublicId(doc.id),
-    fileName: String(doc.fileName ?? '').trim(),
-    slot: (doc.slot === 'receipt' ? 'receipt' : 'receipt') as ExpenseDocumentSlot,
-    ...(doc.addedAt?.trim() ? { addedAt: doc.addedAt.trim() } : {}),
-  }));
+  return docs.map((doc) => {
+    const raw = doc as ExpenseAttachedDocument & { hasStoredFile?: boolean };
+    return {
+      id: normalizeExpensePublicId(raw.id),
+      fileName: String(raw.fileName ?? '').trim(),
+      slot: 'receipt' as ExpenseDocumentSlot,
+      ...(raw.addedAt?.trim() ? { addedAt: raw.addedAt.trim() } : {}),
+      hasStoredFile: raw.hasStoredFile === true,
+    };
+  });
+}
+
+function mapExpenseStoredDocument(
+  raw: Record<string, unknown>,
+  fallback: { fileName: string; slot: ExpenseDocumentSlot },
+): ExpenseAttachedDocument {
+  return {
+    id: String(raw['id'] ?? ''),
+    fileName: String(raw['fileName'] ?? fallback.fileName),
+    slot: (String(raw['slot'] ?? fallback.slot) as ExpenseDocumentSlot),
+    addedAt: String(raw['addedAt'] ?? new Date().toISOString().slice(0, 10)),
+    hasStoredFile: raw['hasStoredFile'] !== false,
+  };
 }
 
 function mapApiExpenseRow(row: Expense): Expense {
@@ -356,6 +370,43 @@ export class ExpensesService {
         ...(payload.incurredAt != null ? { incurredAt: payload.incurredAt } : {}),
       })
       .pipe(map((e) => mapApiExpenseRow(e)));
+  }
+
+  uploadExpenseDocument(
+    expenseId: string,
+    slot: ExpenseDocumentSlot,
+    file: File,
+  ): Observable<ExpenseAttachedDocument> {
+    const id = expenseId.trim();
+    const form = new FormData();
+    form.append('file', file, file.name);
+    form.append('slot', slot);
+    return this.http
+      .post<Record<string, unknown>>(
+        resourceByIdUrl('expenses', id, 'documents'),
+        form,
+      )
+      .pipe(map((raw) => mapExpenseStoredDocument(raw, { fileName: file.name, slot })));
+  }
+
+  downloadExpenseDocument(
+    expenseId: string,
+    documentId: number,
+  ): Observable<{ url: string }> {
+    const id = expenseId.trim();
+    return this.http.get<{ url: string }>(
+      resourceByIdUrl('expenses', id, `documents/${documentId}/download`),
+    );
+  }
+
+  deleteExpenseDocument(
+    expenseId: string,
+    documentId: number,
+  ): Observable<{ id: number; deleted: boolean }> {
+    const id = expenseId.trim();
+    return this.http.delete<{ id: number; deleted: boolean }>(
+      resourceByIdUrl('expenses', id, `documents/${documentId}`),
+    );
   }
 
   deleteExpense(id: string): Observable<{ id: string; deleted: boolean }> {

@@ -12,16 +12,16 @@ function escapeHtml(value: string): string {
     .replaceAll('"', '&quot;');
 }
 
-/** Tooltip de estado: nombre + pin + cantidad de destinos (tarifas). */
+/** Tooltip de estado: nombre + pin + cantidad de rutas (CPs distintos). */
 export function formatDestinationRatesStateTooltipHtml(
   stateName: string,
-  destinationCount: number,
+  routeCount: number,
 ): string {
-  if (destinationCount <= 0) {
+  if (routeCount <= 0) {
     return '';
   }
   const countLabel =
-    destinationCount === 1 ? '1 destino' : `${destinationCount} destinos`;
+    routeCount === 1 ? '1 ruta' : `${routeCount} rutas`;
   return `
     <div style="min-width:8.5rem;max-width:14rem;padding:0.15rem 0;">
       <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.35rem;">

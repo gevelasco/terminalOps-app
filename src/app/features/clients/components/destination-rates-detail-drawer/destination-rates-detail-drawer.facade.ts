@@ -2,6 +2,7 @@ import {
   DestroyRef,
   Injectable,
   computed,
+  effect,
   inject,
   signal,
 } from '@angular/core';
@@ -28,9 +29,27 @@ import {
   estimatedTimesFormStringsFromRate,
 } from '@features/clients/utils/destination-rate-estimated-time';
 import { formatDestinationRateUpdatedAt } from '@features/clients/utils/format-destination-rate-updated-at';
-import type { DestinationRatePriceDraft } from '@shared/models/destination-rate.models';
+import type {
+  DestinationRate,
+  DestinationRatePriceDraft,
+} from '@shared/models/destination-rate.models';
 import { parseHttpApiErrorMessage } from '@shared/utils/http-api-error';
 import { ToSelectOption } from '@shared/ui/to-select/to-select.component';
+
+const EMPTY_RATE: DestinationRate = {
+  id: '',
+  companyId: '',
+  originOperationalCenterId: '',
+  originPostalCode: '',
+  originCityMunicipality: '',
+  originLocality: '',
+  postalCode: '',
+  cityMunicipality: '',
+  locality: '',
+  isRoundTrip: true,
+  prices: [],
+  active: true,
+};
 
 @Injectable()
 export class DestinationRatesDetailDrawerFacade {
@@ -43,8 +62,14 @@ export class DestinationRatesDetailDrawerFacade {
 
   private dismissCallback: (() => void) | null = null;
 
-  readonly rate = computed(() => this.ratesFeature.selectedRate()!);
-  readonly drawerLoading = signal(true);
+  readonly rate = computed(
+    () => this.ratesFeature.selectedRate() ?? EMPTY_RATE,
+  );
+  readonly drawerLoading = computed(
+    () =>
+      this.ratesFeature.detailLoading() ||
+      this.ratesFeature.selectedRate() == null,
+  );
   readonly editing = signal(false);
   readonly saving = signal(false);
   readonly canWriteCommercial = computed(() =>
@@ -103,7 +128,19 @@ export class DestinationRatesDetailDrawerFacade {
 
   markReady(): void {
     this.syncFromRate();
-    this.drawerLoading.set(false);
+  }
+
+  constructor() {
+    effect(() => {
+      const detail = this.ratesFeature.selectedRate();
+      if (!detail) {
+        return;
+      }
+      if (this.editing()) {
+        return;
+      }
+      this.syncFromRate();
+    });
   }
 
   requestDismiss(): void {

@@ -16,6 +16,11 @@ import { normalizeEquipmentFromApi } from '@shared/utils/fleet/normalize-fleet-e
 import type { FleetResourceLinkOptionsResponse } from '@shared/models/api/api-fleet-link-options.model';
 import { mapApiFleetResourceLinkOption } from '@shared/models/api/api-fleet-link-options.model';
 import { buildFleetLinkOptionsQuery } from './fleet-link-options-query';
+import {
+  fetchAllResourcePages,
+  mapResourceListPage,
+  type ResourceListPage,
+} from './resource-list';
 import { SessionService } from '../state/session';
 import { companyResourceUrl, requireCompanyId, resourceByIdUrl } from './api-url';
 
@@ -24,17 +29,30 @@ export class EquipmentService {
   private readonly http = inject(HttpClient);
   private readonly session = inject(SessionService);
 
-  getEquipmentList(options?: { includeFleetTenure?: boolean }): Observable<Equipment[]> {
+  getEquipmentPage(options?: {
+    includeFleetTenure?: boolean;
+    page?: number;
+    limit?: number;
+  }): Observable<ResourceListPage<Equipment>> {
     const companyId = requireCompanyId(this.session.companyId());
-    return this.http
-      .get<Equipment[]>(
+    return mapResourceListPage(
+      this.http.get<ResourceListPage<Equipment> | Equipment[]>(
         companyResourceUrl(companyId, 'equipment', {
           includeFleetTenure: options?.includeFleetTenure,
+          page: options?.page,
+          limit: options?.limit,
         }),
-      )
-      .pipe(
-        map((rows) => (Array.isArray(rows) ? rows : []).map(normalizeEquipmentFromApi)),
-      );
+      ),
+      (row) => normalizeEquipmentFromApi(row as unknown as Equipment),
+    );
+  }
+
+  getEquipmentList(options?: {
+    includeFleetTenure?: boolean;
+  }): Observable<Equipment[]> {
+    return fetchAllResourcePages((page) =>
+      this.getEquipmentPage({ ...options, page, limit: 100 }),
+    );
   }
 
   getEquipmentLinkOptions(params?: {

@@ -19,7 +19,7 @@ import {
 } from '@features/operators/utils/operator-operation-summary';
 import { mergeOperatorNested } from '@features/operators/utils/operator-payload-defaults';
 import { companyTenureLabelEs } from '@features/operators/utils/operator-company-tenure';
-import { filesToOperatorDocuments } from '@features/operators/utils/operator-attached-documents';
+import { trackFileEntry } from '@features/fleet/utils/list-trackers';
 import {
   operatorHasPhoto,
   operatorPhotoInitials,
@@ -59,7 +59,15 @@ import { type ToSegmentTab } from '@shared/ui/to-segment-control/to-segment-cont
 import type { ToSelectOption } from '@shared/ui/to-select/to-select.component';
 import { OperatorsFeatureService } from '@features/operators/services/operators.service';
 import { deriveOperatorOperationalStatus } from '@features/trips/utils/trip-derived-operational-status';
-import { catchError, concat, finalize, of, type Observable } from 'rxjs';
+import {
+  catchError,
+  concat,
+  finalize,
+  forkJoin,
+  of,
+  switchMap,
+  type Observable,
+} from 'rxjs';
 
 export type OperatorEditSection = 'ident' | 'operation' | 'contact' | 'coverage';
 export type OperatorDrawerTab = 'details' | 'operation';
@@ -147,7 +155,11 @@ export class OperatorsDetailDrawerFacade {
   readonly editPrivDeductible = signal('');
   readonly editPrivPlan = signal('');
 
+  /** Documentos ya persistidos (editables: quitar = delete en API). */
   readonly editDocuments = signal<OperatorAttachedDocument[]>([]);
+  readonly editNewFilesOperation = signal<File[]>([]);
+  readonly editNewFilesInsurance = signal<File[]>([]);
+  readonly trackFileEntry = trackFileEntry;
 
   readonly operationDocuments = computed(() =>
     this.operator().documents.filter((d) => d.slot === 'operation'),
@@ -496,10 +508,11 @@ export class OperatorsDetailDrawerFacade {
     if (!list.length) {
       return;
     }
-    this.editDocuments.update((prev) => [
-      ...prev,
-      ...filesToOperatorDocuments(list, slot),
-    ]);
+    const target =
+      slot === 'operation'
+        ? this.editNewFilesOperation
+        : this.editNewFilesInsurance;
+    target.update((prev) => [...prev, ...list]);
     input.value = '';
   }
 
@@ -507,8 +520,75 @@ export class OperatorsDetailDrawerFacade {
     this.editDocuments.update((prev) => prev.filter((d) => d.id !== id));
   }
 
-  downloadOperatorDocument(_d: OperatorAttachedDocument): void {
-    this.toast.show('La descarga de documentos estará disponible con la API de archivos.', 'info');
+  removeEditNewFile(slot: OperatorDocumentSlot, index: number): void {
+    const target =
+      slot === 'operation'
+        ? this.editNewFilesOperation
+        : this.editNewFilesInsurance;
+    target.update((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  downloadOperatorDocument(d: OperatorAttachedDocument): void {
+    const documentId = Number(d.id);
+    if (!Number.isInteger(documentId) || documentId < 1) {
+      this.toast.show(
+        'Este documento aún no está en el almacenamiento (vuelve a subirlo).',
+        'info',
+      );
+      return;
+    }
+    if (d.hasStoredFile === false) {
+      this.toast.show(
+        'Este documento solo tiene nombre registrado; súbelo de nuevo para poder descargarlo.',
+        'info',
+      );
+      return;
+    }
+    this.operatorsApi
+      .downloadOperatorDocument(this.operator().id, documentId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: ({ url }) => {
+          const a = document.createElement('a');
+          a.href = url;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.download = d.fileName || 'documento';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        },
+        error: () => {
+          this.toast.show('No se pudo descargar el documento.', 'error');
+        },
+      });
+  }
+
+  private syncOperatorDocuments(
+    slot: OperatorDocumentSlot,
+    kept: readonly OperatorAttachedDocument[],
+    newFiles: readonly File[],
+    original: readonly OperatorAttachedDocument[],
+  ): Observable<unknown> {
+    const operatorId = this.operator().id;
+    const keptIds = new Set(
+      kept
+        .map((d) => Number(d.id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    );
+    const deletes = original
+      .filter((d) => {
+        const id = Number(d.id);
+        return Number.isInteger(id) && id > 0 && !keptIds.has(id);
+      })
+      .map((d) =>
+        this.operatorsApi.deleteOperatorDocument(operatorId, Number(d.id)),
+      );
+    const uploads = newFiles.map((file) =>
+      this.operatorsApi.uploadOperatorDocument(operatorId, slot, file),
+    );
+    const ops = [...deletes, ...uploads];
+    return ops.length === 0 ? of(null) : forkJoin(ops);
   }
 
   saveIdentification(): void {
@@ -601,15 +681,21 @@ export class OperatorsDetailDrawerFacade {
       employmentContractType: this.editEmploymentContractType().trim(),
       paymentSchedule: this.editPaymentSchedule(),
       paymentMethod: this.editPaymentMethod().trim() || undefined,
-      documents: [...this.editDocuments()],
     }) as Operator;
 
+    const originalOpDocs = previous.documents.filter((d) => d.slot === 'operation');
+    const keptOpDocs = this.editOperationDocuments();
+    const newOpFiles = this.editNewFilesOperation();
+
     this.saving.set(true);
-    this.operatorsFeature
-      .updateOperator(updated)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+    this.syncOperatorDocuments('operation', keptOpDocs, newOpFiles, originalOpDocs)
+      .pipe(
+        switchMap(() => this.operatorsFeature.updateOperator(updated)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: () => {
+          this.editNewFilesOperation.set([]);
           if (statusLocked || !nextStatus || nextStatus === 'in_use') {
             this.saving.set(false);
             this.toast.show('Cambios guardados.', 'success');
@@ -726,8 +812,9 @@ export class OperatorsDetailDrawerFacade {
   }
 
   saveCoverage(): void {
+    const previous = this.operator();
     const updated = mergeOperatorNested({
-      ...this.operator(),
+      ...previous,
       insuranceKind: this.editInsuranceKind(),
       publicInsurance: {
         nss: this.editPubNss().trim(),
@@ -748,9 +835,37 @@ export class OperatorsDetailDrawerFacade {
         deductibleNotes: this.editPrivDeductible().trim(),
         planSummary: this.editPrivPlan().trim(),
       },
-      documents: [...this.editDocuments()],
     }) as Operator;
-    this.persistOperator(updated);
+
+    const originalInsDocs = previous.documents.filter(
+      (d) => d.slot === 'insurance',
+    );
+    const keptInsDocs = this.editInsuranceDocuments();
+    const newInsFiles = this.editNewFilesInsurance();
+
+    this.saving.set(true);
+    this.syncOperatorDocuments(
+      'insurance',
+      keptInsDocs,
+      newInsFiles,
+      originalInsDocs,
+    )
+      .pipe(
+        switchMap(() => this.operatorsFeature.updateOperator(updated)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: () => {
+          this.editNewFilesInsurance.set([]);
+          this.saving.set(false);
+          this.toast.show('Cambios guardados.', 'success');
+          this.editingSection.set(null);
+        },
+        error: () => {
+          this.toast.show('No se pudo guardar.', 'error');
+          this.saving.set(false);
+        },
+      });
   }
 
   private persistOperator(updated: Operator): void {
@@ -812,6 +927,8 @@ export class OperatorsDetailDrawerFacade {
     this.editPrivDeductible.set(o.privateInsurance.deductibleNotes);
     this.editPrivPlan.set(o.privateInsurance.planSummary);
     this.editDocuments.set([...(o.documents ?? [])]);
+    this.editNewFilesOperation.set([]);
+    this.editNewFilesInsurance.set([]);
   }
 
   confirmOperatorPayment(tripId: string): void {
