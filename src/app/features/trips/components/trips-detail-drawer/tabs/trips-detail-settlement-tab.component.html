@@ -155,33 +155,80 @@
             }
           </dl>
           @if (vm.canMarkClientCollected()) {
-            <div
-              class="maniobra-detail__collect-row"
-              role="group"
-              aria-labelledby="maniobra-settlement-collected-label"
-            >
-              <div class="maniobra-detail__collect-copy">
-                <span
-                  id="maniobra-settlement-collected-label"
-                  class="maniobra-detail__collect-label"
-                  >Confirmar cobro</span
-                >
-                <span class="maniobra-detail__collect-hint">
-                  Marca la maniobra como pagada cuando el cliente liquide.
-                </span>
-              </div>
-              <button
-                type="button"
-                class="fleet-unit-toggle"
-                [class.fleet-unit-toggle--on]="vm.clientCollected()"
-                role="switch"
-                [attr.aria-checked]="vm.clientCollected()"
+            <div class="maniobra-settlement__actions">
+              <div
+                class="maniobra-settlement__action"
+                role="group"
                 aria-labelledby="maniobra-settlement-collected-label"
-                [disabled]="vm.collectSaving()"
-                (click)="vm.toggleClientCollected()"
               >
-                <span class="fleet-unit-toggle__thumb" aria-hidden="true"></span>
-              </button>
+                <div class="maniobra-settlement__action-copy">
+                  <span
+                    id="maniobra-settlement-collected-label"
+                    class="maniobra-settlement__action-label"
+                    >Confirmar cobro</span
+                  >
+                  <span class="maniobra-settlement__action-hint">
+                    Marca la maniobra como pagada cuando el cliente liquide.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  class="fleet-unit-toggle"
+                  [class.fleet-unit-toggle--on]="vm.clientCollected()"
+                  role="switch"
+                  [attr.aria-checked]="vm.clientCollected()"
+                  aria-labelledby="maniobra-settlement-collected-label"
+                  [disabled]="vm.collectSaving()"
+                  (click)="vm.toggleClientCollected()"
+                >
+                  <span class="fleet-unit-toggle__thumb" aria-hidden="true"></span>
+                </button>
+              </div>
+              <div class="maniobra-settlement__action">
+                <div class="maniobra-settlement__action-copy">
+                  <span class="maniobra-settlement__action-label"
+                    >Generar liquidación</span
+                  >
+                  <span class="maniobra-settlement__action-hint">
+                    PDF para imprimir y archivar en físico.
+                  </span>
+                </div>
+                <to-button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  [loading]="vm.settlementPdfGenerating()"
+                  [disabled]="vm.settlementPdfGenerating()"
+                  (click)="vm.generateSettlementDocument()"
+                >
+                  <to-icon name="document" [size]="16" />
+                  Generar
+                </to-button>
+              </div>
+            </div>
+          } @else {
+            <div class="maniobra-settlement__actions">
+              <div class="maniobra-settlement__action">
+                <div class="maniobra-settlement__action-copy">
+                  <span class="maniobra-settlement__action-label"
+                    >Generar liquidación</span
+                  >
+                  <span class="maniobra-settlement__action-hint">
+                    PDF para imprimir y archivar en físico.
+                  </span>
+                </div>
+                <to-button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  [loading]="vm.settlementPdfGenerating()"
+                  [disabled]="vm.settlementPdfGenerating()"
+                  (click)="vm.generateSettlementDocument()"
+                >
+                  <to-icon name="document" [size]="16" />
+                  Generar
+                </to-button>
+              </div>
             </div>
           }
           @if (vm.docs('billing').length > 0) {
@@ -207,6 +254,29 @@
           <p class="maniobra-detail__muted-block">
             Maniobra interna: sin cliente externo ni cobro registrado al programar.
           </p>
+          <div class="maniobra-settlement__actions">
+            <div class="maniobra-settlement__action">
+              <div class="maniobra-settlement__action-copy">
+                <span class="maniobra-settlement__action-label"
+                  >Generar liquidación</span
+                >
+                <span class="maniobra-settlement__action-hint">
+                  PDF para imprimir y archivar en físico.
+                </span>
+              </div>
+              <to-button
+                type="button"
+                variant="outline"
+                size="sm"
+                [loading]="vm.settlementPdfGenerating()"
+                [disabled]="vm.settlementPdfGenerating()"
+                (click)="vm.generateSettlementDocument()"
+              >
+                <to-icon name="document" [size]="16" />
+                Generar
+              </to-button>
+            </div>
+          </div>
         }
       </section>
 

@@ -38,6 +38,7 @@ import {
   createEmptyPriceDraft,
   validateDestinationRateForm,
 } from '@features/clients/utils/destination-rate-payload';
+import { beginInFlight } from '@shared/utils/in-flight-guard';
 import {
   buildDestinationRateRouteKey,
   destinationRateRouteKeyFingerprint,
@@ -211,6 +212,9 @@ export class DestinationRatesNewDrawerComponent {
   }
 
   submit(): void {
+    if (this.saving()) {
+      return;
+    }
     if (this.routeMode() === 'EXISTING_ROUTE' || this.existingDuplicateRate()) {
       this.toast.show('Ya existe una tarifa para esta ruta', 'warning');
       return;
@@ -251,7 +255,9 @@ export class DestinationRatesNewDrawerComponent {
       estimatedTimeUnit: this.estimatedTimeUnit(),
     });
 
-    this.saving.set(true);
+    if (!beginInFlight(this.saving)) {
+      return;
+    }
     this.ratesFeature
       .createDestinationRate(payload)
       .pipe(takeUntilDestroyed(this.destroyRef))

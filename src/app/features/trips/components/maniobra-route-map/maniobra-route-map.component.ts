@@ -12,23 +12,27 @@ import {
   input,
   output,
   signal,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HttpClient } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Subscription } from 'rxjs';
 import type { ECElementEvent, EChartsType } from 'echarts/core';
 import type { TripMapItem, TripsMapMeta } from '@shared/models/api/api-trips-map.model';
 import { FleetOverviewCardComponent } from '@features/fleet/components/fleet-overview-card/fleet-overview-card.component';
 import { ToKpiCardComponent } from '@shared/ui/to-kpi-card/to-kpi-card.component';
 import { ToSkeletonComponent } from '@shared/ui/to-skeleton/to-skeleton.component';
 import { TripsMapStateFleetService } from '@features/trips/services/trips-map-state-fleet.service';
+import { OsrmDrivingRouteService } from '@shared/services/osrm-driving-route.service';
 import { ensureTripsMapEchartsModules } from '@features/trips/utils/trips-map-chart-modules';
 import {
   TRIPS_MAP_GEO_NAME,
   buildTripsMapEchartsOption,
+  type TripMapRouteGeometryById,
   type TripsMapPointDatum,
   type TripsMapRouteDatum,
 } from '@features/trips/utils/trips-map-echarts-option';
+import { uniqueTripMapRoutePairs } from '@features/trips/utils/trips-map-route-geometry';
 import {
   countTripsMapActiveDestinationStates,
   tripIdsByDestinationState,
@@ -48,6 +52,7 @@ import { countTripsMapByStatus } from '@features/trips/utils/trips-map-viewport.
 export class ManiobraRouteMapComponent implements AfterViewInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly osrm = inject(OsrmDrivingRouteService);
   protected readonly stateFleet = inject(TripsMapStateFleetService);
 
   @ViewChild('chartHost', { static: true })
@@ -72,13 +77,73 @@ export class ManiobraRouteMapComponent implements AfterViewInit, OnDestroy {
   private geoRegistered = false;
   private geoJson: MexicoStatesGeoJson | null = null;
   private readonly geoJsonSignal = signal<MexicoStatesGeoJson | null>(null);
+  private readonly routeGeometries = signal<TripMapRouteGeometryById>(
+    new Map(),
+  );
 
   constructor() {
     effect(() => {
       this.items();
+      this.routeGeometries();
       if (this.chart && this.geoRegistered) {
         this.renderChart();
       }
+    });
+
+    effect((onCleanup) => {
+      const items = this.items();
+      const pairs = uniqueTripMapRoutePairs(items);
+      const activeIds = new Set(items.map((item) => item.id));
+      untracked(() => this.pruneRouteGeometries(activeIds));
+      if (pairs.length === 0) {
+        return;
+      }
+
+      const subs: Subscription[] = [];
+      for (const pair of pairs) {
+        const sub = this.osrm.drivingRoute(pair.from, pair.to).subscribe((route) => {
+          const coords = route?.coordinates;
+          if (!coords || coords.length < 2) {
+            return;
+          }
+          this.routeGeometries.update((prev) => {
+            const next = new Map(prev);
+            for (const tripId of pair.tripIds) {
+              next.set(tripId, coords);
+            }
+            return next;
+          });
+        });
+        subs.push(sub);
+      }
+
+      onCleanup(() => {
+        for (const sub of subs) {
+          sub.unsubscribe();
+        }
+      });
+    });
+  }
+
+  private pruneRouteGeometries(activeIds: ReadonlySet<string>): void {
+    this.routeGeometries.update((prev) => {
+      let stale = false;
+      for (const id of prev.keys()) {
+        if (!activeIds.has(id)) {
+          stale = true;
+          break;
+        }
+      }
+      if (!stale) {
+        return prev;
+      }
+      const next = new Map<string, ReadonlyArray<readonly [number, number]>>();
+      for (const [id, coords] of prev) {
+        if (activeIds.has(id)) {
+          next.set(id, coords);
+        }
+      }
+      return next;
     });
   }
 
@@ -123,7 +188,10 @@ export class ManiobraRouteMapComponent implements AfterViewInit, OnDestroy {
     if (!this.chart) {
       return;
     }
-    this.chart.setOption(buildTripsMapEchartsOption(this.items(), this.geoJson), true);
+    this.chart.setOption(
+      buildTripsMapEchartsOption(this.items(), this.geoJson, this.routeGeometries()),
+      true,
+    );
     this.chart.off('click');
     this.chart.on('click', (event: ECElementEvent) => {
       if (this.isDestinationPoint(event.data)) {

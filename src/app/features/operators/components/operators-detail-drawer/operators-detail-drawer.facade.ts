@@ -592,6 +592,9 @@ export class OperatorsDetailDrawerFacade {
   }
 
   saveIdentification(): void {
+    if (this.saving()) {
+      return;
+    }
     const name = this.editName().trim();
     const birthDate = this.editBirthDate().trim();
     const curp = this.editCurp().trim().toUpperCase();
@@ -648,6 +651,9 @@ export class OperatorsDetailDrawerFacade {
   }
 
   saveOperation(): void {
+    if (this.saving()) {
+      return;
+    }
     const companyHireDate = this.editCompanyHireDate().trim();
     if (companyHireDate && !/^\d{4}-\d{2}-\d{2}$/.test(companyHireDate)) {
       this.toast.show(
@@ -798,6 +804,9 @@ export class OperatorsDetailDrawerFacade {
   }
 
   saveContact(): void {
+    if (this.saving()) {
+      return;
+    }
     const updated = mergeOperatorNested({
       ...this.operator(),
       emergencyContact: {
@@ -812,6 +821,9 @@ export class OperatorsDetailDrawerFacade {
   }
 
   saveCoverage(): void {
+    if (this.saving()) {
+      return;
+    }
     const previous = this.operator();
     const updated = mergeOperatorNested({
       ...previous,
@@ -869,6 +881,9 @@ export class OperatorsDetailDrawerFacade {
   }
 
   private persistOperator(updated: Operator): void {
+    if (this.saving()) {
+      return;
+    }
     this.saving.set(true);
     this.operatorsFeature
       .updateOperator(updated)

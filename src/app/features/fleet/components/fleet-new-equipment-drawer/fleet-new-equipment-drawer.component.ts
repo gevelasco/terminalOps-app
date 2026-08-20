@@ -54,6 +54,7 @@ import { ToFleetUnitInputComponent } from '@shared/ui/to-fleet-unit-input/to-fle
 import { ToSelectComponent } from '@shared/ui/to-select/to-select.component';
 import { ToFleetBrandComboboxComponent } from '@shared/ui/to-fleet-brand-combobox/to-fleet-brand-combobox.component';
 import { ToFleetVersionComboboxComponent } from '@shared/ui/to-fleet-version-combobox/to-fleet-version-combobox.component';
+import { beginInFlight } from '@shared/utils/in-flight-guard';
 import { deriveFleetBrandAbbr } from '@shared/utils/fleet/derive-fleet-brand-abbr';
 import { registerFleetVersionResetOnBrandChange } from '@shared/utils/fleet/fleet-brand-version-link';
 import { ToTextareaComponent } from '@shared/ui/to-textarea/to-textarea.component';
@@ -471,6 +472,9 @@ export class FleetNewEquipmentDrawerComponent {
   }
 
   submit(): void {
+    if (this.saving()) {
+      return;
+    }
     const uid = this.unitId().trim();
     const brandName = this.brandName().trim();
     const yearRaw = this.modelYear().trim();
@@ -675,7 +679,9 @@ export class FleetNewEquipmentDrawerComponent {
       })),
     ];
 
-    this.saving.set(true);
+    if (!beginInFlight(this.saving)) {
+      return;
+    }
     this.equipmentFeature
       .createEquipment({
         unitId: uid || undefined,

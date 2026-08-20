@@ -31,6 +31,8 @@ export class ToSideDrawerComponent {
   readonly loading = input(false, { transform: booleanAttribute });
   readonly skeletonVariant = input<DrawerSkeletonVariant>('detail');
   readonly formMode = input(false, { transform: booleanAttribute });
+  /** Blocks form submit while a parent save/create request is in flight. */
+  readonly formBusy = input(false, { transform: booleanAttribute });
   readonly lockScroll = input(true, { transform: booleanAttribute });
   readonly panelClass = input('');
   readonly bodyClass = input('');
@@ -54,7 +56,7 @@ export class ToSideDrawerComponent {
 
   onFormSubmit(event: SubmitEvent): void {
     event.preventDefault();
-    if (this.formMode()) {
+    if (this.formMode() && !this.formBusy()) {
       this.formSubmit.emit();
     }
   }

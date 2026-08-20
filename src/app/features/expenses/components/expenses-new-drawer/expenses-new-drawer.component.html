@@ -2,6 +2,7 @@
   titleId="expenses-new-drawer-title"
   wide
   formMode
+  [formBusy]="saving()"
   bodyClass="fleet-unit-body"
   (dismiss)="dismiss.emit()"
   (formSubmit)="submit()"
@@ -195,11 +196,17 @@
   </section>
 
   <div toSideDrawerFooter>
-      <to-button type="button" variant="outline" (click)="dismiss.emit()">
+      <to-button type="button" variant="outline" [disabled]="saving()" (click)="dismiss.emit()">
         Cancelar
       </to-button>
-      <to-button type="submit" variant="primary">
-        {{ isEditing() ? 'Guardar cambios' : 'Guardar gasto' }}
+      <to-button type="submit" variant="primary" [disabled]="saving()">
+        {{
+          saving()
+            ? 'Guardando…'
+            : isEditing()
+              ? 'Guardar cambios'
+              : 'Guardar gasto'
+        }}
       </to-button>
     </div>
 </to-side-drawer>

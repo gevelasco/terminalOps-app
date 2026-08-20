@@ -107,6 +107,7 @@ export type TripsNewDrawerSubmitSnapshot = {
   selectedOperationConfigId: string | undefined;
   selectedOperationConfigName: string | undefined;
   usesMultipleEquipment: boolean;
+  unitRequiresHitchedEquipment: boolean;
   equipmentPrimaryId: string;
   equipmentSecondaryId: string;
   equipmentPrimaryLabel: string;
@@ -227,19 +228,21 @@ export function buildTripsNewDrawerSubmitResult(
   const eq1 = snap.equipmentPrimaryId.trim();
   const eq2 = snap.equipmentSecondaryId.trim();
 
-  if (snap.usesMultipleEquipment) {
-    if (!eq1 || !eq2) {
-      const configName = snap.selectedOperationConfigName ?? 'esta configuración';
+  if (snap.unitRequiresHitchedEquipment) {
+    if (snap.usesMultipleEquipment) {
+      if (!eq1 || !eq2) {
+        const configName = snap.selectedOperationConfigName ?? 'esta configuración';
+        return {
+          ok: false,
+          message: `La unidad elegida no tiene la configuración de equipos requerida para ${configName}.`,
+        };
+      }
+    } else if (!eq1) {
       return {
         ok: false,
-        message: `La unidad elegida no tiene la configuración de equipos requerida para ${configName}.`,
+        message: 'La unidad elegida no tiene equipo configurado.',
       };
     }
-  } else if (!eq1) {
-    return {
-      ok: false,
-      message: 'La unidad elegida no tiene equipo configurado.',
-    };
   }
 
   const plannedSchedule = plannedScheduleIsoTriplet(
@@ -251,7 +254,7 @@ export function buildTripsNewDrawerSubmitResult(
     return {
       ok: false,
       message:
-        'Completa salida, llegada cliente y llegada / fin en orden cronológico.',
+        'Completa salida, cita cliente y llegada origen en orden cronológico.',
     };
   }
 

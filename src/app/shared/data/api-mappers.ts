@@ -395,6 +395,52 @@ function mapApiTripDocuments(raw: unknown): TripStoredDocument[] {
     .filter((doc): doc is TripStoredDocument => doc != null);
 }
 
+function mapTripProgrammer(row: Record<string, unknown>): {
+  createdByName?: string;
+  createdByUsername?: string;
+} {
+  const nested = row['createdBy'] ?? row['createdByUser'];
+  let nestedName = '';
+  let nestedUsername = '';
+  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+    const o = nested as Record<string, unknown>;
+    nestedName = String(o['name'] ?? o['fullName'] ?? o['displayName'] ?? '').trim();
+    nestedUsername = String(o['username'] ?? '').trim();
+  } else if (typeof nested === 'string') {
+    nestedName = nested.trim();
+  }
+  const name = String(
+    row['createdByName'] ??
+      row['createdByLabel'] ??
+      row['createdByUserName'] ??
+      row['created_by'] ??
+      nestedName,
+  ).trim();
+  const username = String(row['createdByUsername'] ?? nestedUsername).trim();
+  return {
+    createdByName: name || undefined,
+    createdByUsername: username || undefined,
+  };
+}
+
+function mapTripUnitFields(row: Record<string, unknown>): {
+  unitId: string;
+  unitOperationalCode?: string;
+} {
+  const nested = row['unit'];
+  let nestedId = '';
+  let nestedCode: string | undefined;
+  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+    const o = nested as Record<string, unknown>;
+    nestedId = resourceIdKey(o['id']);
+    nestedCode = String(o['unitOperationalCode'] ?? '').trim() || undefined;
+  }
+  const unitId = resourceIdKey(row['unitId']) || nestedId;
+  const unitOperationalCode =
+    String(row['unitOperationalCode'] ?? '').trim() || nestedCode || undefined;
+  return { unitId, unitOperationalCode };
+}
+
 export function mapApiTrip(row: Record<string, unknown>): Trip {
   const trip = row as unknown as Trip;
   const rawEquipmentIds = row['equipmentIds'];
@@ -402,18 +448,20 @@ export function mapApiTrip(row: Record<string, unknown>): Trip {
   const incidents = Array.isArray(rawIncidents)
     ? rawIncidents.map((inc) => mapApiTripIncident(inc as Record<string, unknown>))
     : trip.incidents;
+  const { unitId, unitOperationalCode } = mapTripUnitFields(row);
   const mapped: Trip = {
     ...trip,
     id: resourceIdKey(trip.id),
     clientId: resourceIdKey(trip.clientId),
-    unitId: resourceIdKey(trip.unitId),
+    unitId,
     operatorId: resourceIdKey(trip.operatorId),
     operationConfigurationId: row['operationConfigurationId']
       ? resourceIdKey(row['operationConfigurationId'])
       : trip.operationConfigurationId,
     operatorName: String(row['operatorName'] ?? '').trim() || undefined,
-    unitOperationalCode: String(row['unitOperationalCode'] ?? '').trim() || undefined,
+    unitOperationalCode,
     createdAt: String(row['createdAt'] ?? trip.createdAt ?? ''),
+    ...mapTripProgrammer(row),
     completedAt:
       String(row['completedAt'] ?? trip.completedAt ?? '').trim() || null,
     plannedDepartureAt: String(row['plannedDepartureAt'] ?? trip.plannedDepartureAt ?? ''),
@@ -447,6 +495,8 @@ export function mapApiTrip(row: Record<string, unknown>): Trip {
   for (const key of [
     'origin',
     'destination',
+    'unit',
+    'operator',
     'operationalDistanceKm',
     'isRoundTrip',
     'dieselPricePerLiterAtCreation',

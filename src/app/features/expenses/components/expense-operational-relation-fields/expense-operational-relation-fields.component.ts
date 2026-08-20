@@ -2,10 +2,15 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
+  inject,
   input,
   model,
+  signal,
+  untracked,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { TripsService } from '@services/api/trips';
 import {
   EXPENSE_VERIFICATION_SCOPE_OPTIONS,
 } from '@shared/catalogs/expense-form-options';
@@ -18,10 +23,18 @@ import {
   type ExpenseOperationalRelationTab,
 } from '@features/expenses/utils/expense-operational-relation.util';
 import { expenseManeuverCode } from '@features/expenses/utils/expense-row-labels';
+import {
+  expenseRelationsFromTrip,
+  mergeTripExpenseRelations,
+  tripEquipmentDisplayLabel,
+  tripOperatorDisplayLabel,
+  tripUnitDisplayLabel,
+} from '@features/expenses/utils/expense-trip-relations.util';
 import type {
   Expense,
   ExpenseKind,
   ExpenseVerificationScope,
+  Trip,
 } from '@shared/models/logistics.models';
 import {
   ToFilterTabsComponent,
@@ -50,6 +63,8 @@ import type { ExpenseRubro } from '@features/expenses/utils/expense-rubro.util';
   styleUrl: './expense-operational-relation-fields.component.scss',
 })
 export class ExpenseOperationalRelationFieldsComponent {
+  private readonly tripsApi = inject(TripsService);
+
   readonly mode = input<'edit' | 'read'>('edit');
   readonly rubro = input<ExpenseRubro>('gasto');
   readonly kind = input<ExpenseKind>('other');
@@ -84,10 +99,57 @@ export class ExpenseOperationalRelationFieldsComponent {
     () => this.kind() === 'verification',
   );
 
+  private readonly linkedTrip = signal<Trip | null>(null);
+  private appliedTripId = '';
+
+  private readonly linkedTripId = computed(() => {
+    if (this.mode() === 'read') {
+      return this.expense()?.tripId?.trim() || '';
+    }
+    return this.tripId().trim();
+  });
+
+  constructor() {
+    effect((onCleanup) => {
+      const tripId = this.linkedTripId();
+      if (!tripId) {
+        this.linkedTrip.set(null);
+        this.appliedTripId = '';
+        return;
+      }
+
+      let cancelled = false;
+      const sub = this.tripsApi.getTripById(tripId).subscribe({
+        next: (trip) => {
+          if (cancelled || !trip) {
+            return;
+          }
+          this.linkedTrip.set(trip);
+          if (this.mode() === 'edit') {
+            untracked(() => this.applyTripRelations(trip, tripId));
+          }
+        },
+        error: () => {
+          if (!cancelled) {
+            this.linkedTrip.set(null);
+          }
+        },
+      });
+      onCleanup(() => {
+        cancelled = true;
+        sub.unsubscribe();
+      });
+    });
+  }
+
   readonly tripDisplayLabel = computed(() => {
     const e = this.expense();
     if (e?.tripManeuverCode?.trim()) {
       return e.tripManeuverCode.trim();
+    }
+    const fromTrip = this.linkedTrip()?.maneuverCode?.trim();
+    if (fromTrip) {
+      return fromTrip;
     }
     const tid = this.tripId().trim();
     if (!tid) {
@@ -96,30 +158,68 @@ export class ExpenseOperationalRelationFieldsComponent {
     return this.tripManeuverByTripId()?.get(tid)?.trim() || '';
   });
 
-  readonly fleetRelationDisplayLabel = computed(() =>
-    this.expense()?.fleetRelationLabel?.trim() || '',
+  readonly unitDisplayLabel = computed(
+    () =>
+      this.expense()?.relatedUnitLabel?.trim() ||
+      tripUnitDisplayLabel(this.linkedTrip()) ||
+      this.expense()?.fleetRelationLabel?.trim() ||
+      '',
+  );
+  readonly equipmentDisplayLabel = computed(
+    () =>
+      this.expense()?.relatedEquipmentLabel?.trim() ||
+      tripEquipmentDisplayLabel(this.linkedTrip()) ||
+      '',
+  );
+  readonly operatorDisplayLabel = computed(
+    () =>
+      this.expense()?.relatedOperatorLabel?.trim() ||
+      tripOperatorDisplayLabel(this.linkedTrip()) ||
+      '',
   );
 
   readonly maneuverCode = computed(() => {
     if (this.mode() === 'read') {
       const e = this.expense();
-      return e ? expenseManeuverCode(e, this.tripManeuverByTripId()) : '—';
+      const fromExpense = e
+        ? expenseManeuverCode(e, this.tripManeuverByTripId())
+        : '—';
+      if (fromExpense !== '—') {
+        return fromExpense;
+      }
+      return this.linkedTrip()?.maneuverCode?.trim() || '—';
     }
     const tid = this.tripId().trim();
     if (!tid) {
       return '—';
     }
-    return this.tripManeuverByTripId()?.get(tid)?.trim() || '—';
+    return (
+      this.linkedTrip()?.maneuverCode?.trim() ||
+      this.tripManeuverByTripId()?.get(tid)?.trim() ||
+      '—'
+    );
   });
 
   readonly unitLabel = computed(() =>
-    this.relationFieldLabel('unit', this.expense()?.relatedUnitLabel),
+    this.relationFieldLabel(
+      'unit',
+      this.expense()?.relatedUnitLabel,
+      tripUnitDisplayLabel(this.linkedTrip()),
+    ),
   );
   readonly equipmentLabel = computed(() =>
-    this.relationFieldLabel('equipment', this.expense()?.relatedEquipmentLabel),
+    this.relationFieldLabel(
+      'equipment',
+      this.expense()?.relatedEquipmentLabel,
+      tripEquipmentDisplayLabel(this.linkedTrip()),
+    ),
   );
   readonly operatorLabel = computed(() =>
-    this.relationFieldLabel('operator', this.expense()?.relatedOperatorLabel),
+    this.relationFieldLabel(
+      'operator',
+      this.expense()?.relatedOperatorLabel,
+      tripOperatorDisplayLabel(this.linkedTrip()),
+    ),
   );
 
   readonly verificationTypeLabel = computed(() => {
@@ -140,23 +240,53 @@ export class ExpenseOperationalRelationFieldsComponent {
     this.relationTab.set(tab);
   }
 
+  private applyTripRelations(trip: Trip, tripId: string): void {
+    const overwrite =
+      this.appliedTripId !== '' && this.appliedTripId !== tripId;
+    this.appliedTripId = tripId;
+    const next = mergeTripExpenseRelations(
+      {
+        relatedUnitId: this.relatedUnitId(),
+        relatedEquipmentId: this.relatedEquipmentId(),
+        relatedOperatorId: this.relatedOperatorId(),
+      },
+      expenseRelationsFromTrip(this.kind(), trip),
+      overwrite ? 'overwrite' : 'fill-empty',
+    );
+    this.relatedUnitId.set(next.relatedUnitId);
+    this.relatedEquipmentId.set(next.relatedEquipmentId);
+    this.relatedOperatorId.set(next.relatedOperatorId);
+  }
+
   private readUnitId(): string {
     if (this.mode() === 'read') {
-      return this.expense()?.relatedUnitId?.trim() || '';
+      return (
+        this.expense()?.relatedUnitId?.trim() ||
+        this.linkedTrip()?.unitId?.trim() ||
+        ''
+      );
     }
     return this.relatedUnitId().trim();
   }
 
   private readEquipmentId(): string {
     if (this.mode() === 'read') {
-      return this.expense()?.relatedEquipmentId?.trim() || '';
+      return (
+        this.expense()?.relatedEquipmentId?.trim() ||
+        this.linkedTrip()?.equipmentIds?.[0]?.trim() ||
+        ''
+      );
     }
     return this.relatedEquipmentId().trim();
   }
 
   private readOperatorId(): string {
     if (this.mode() === 'read') {
-      return this.expense()?.relatedOperatorId?.trim() || '';
+      return (
+        this.expense()?.relatedOperatorId?.trim() ||
+        this.linkedTrip()?.operatorId?.trim() ||
+        ''
+      );
     }
     return this.relatedOperatorId().trim();
   }
@@ -164,6 +294,7 @@ export class ExpenseOperationalRelationFieldsComponent {
   private relationFieldLabel(
     field: 'unit' | 'equipment' | 'operator',
     apiLabel: string | undefined,
+    tripLabel: string,
   ): string {
     const id =
       field === 'unit'
@@ -171,12 +302,20 @@ export class ExpenseOperationalRelationFieldsComponent {
         : field === 'equipment'
           ? this.readEquipmentId()
           : this.readOperatorId();
-    if (!id) {
+    if (!id && !tripLabel) {
       return '—';
     }
     if (this.mode() === 'read') {
-      return apiLabel?.trim() || id;
+      return apiLabel?.trim() || tripLabel || id || '—';
     }
-    return this.fleetRelationDisplayLabel() || id;
+    return (
+      (field === 'unit'
+        ? this.unitDisplayLabel()
+        : field === 'equipment'
+          ? this.equipmentDisplayLabel()
+          : this.operatorDisplayLabel()) ||
+      id ||
+      '—'
+    );
   }
 }

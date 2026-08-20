@@ -1,6 +1,9 @@
 import type { Equipment, Operator, Trip, Unit } from '@shared/models/logistics.models';
 import { formatEquipmentOperationalId } from '@shared/utils/fleet/fleet-id-builders';
-import { labelForUnitId } from '@shared/utils/fleet/unit-label';
+import {
+  formatUnitTrailerOperationalId,
+  labelForUnitId,
+} from '@shared/utils/fleet/unit-label';
 import { resourceIdKey, resourceIdsEqual } from '@shared/utils/resource-id';
 
 /** Primera localidad antes de coma en «Ciudad, Estado». */
@@ -86,10 +89,33 @@ export function tripOperatorDisplayName(
   return 'Sin operador';
 }
 
+export function tripAssignedUnitId(
+  trip: Pick<Trip, 'unitId' | 'equipmentIds'>,
+  equipmentCatalog?: readonly Equipment[],
+): string {
+  const direct = resourceIdKey(trip.unitId);
+  if (direct) {
+    return direct;
+  }
+  const eqId = resourceIdKey(trip.equipmentIds?.[0]);
+  if (!eqId || !equipmentCatalog?.length) {
+    return '';
+  }
+  const eq = equipmentCatalog.find((e) => resourceIdsEqual(e.id, eqId));
+  return resourceIdKey(eq?.unitId);
+}
+
 export function tripUnitDisplayCode(
   trip: Pick<Trip, 'unitOperationalCode' | 'unitId'>,
   units?: readonly Unit[],
+  liveUnit?: Unit | null,
 ): string {
+  if (liveUnit) {
+    const formatted = formatUnitTrailerOperationalId(liveUnit).trim();
+    if (formatted) {
+      return formatted;
+    }
+  }
   const live = trip.unitOperationalCode?.trim();
   if (live) {
     return live;
@@ -97,11 +123,11 @@ export function tripUnitDisplayCode(
   const id = resourceIdKey(trip.unitId);
   if (id && units?.length) {
     const label = labelForUnitId(id, units);
-    if (label !== id && label !== 'Sin asignar') {
+    if (label && label !== 'Sin asignar') {
       return label;
     }
   }
-  return id ? 'Sin unidad' : 'Sin unidad';
+  return id || '—';
 }
 
 /** Código operativo del equipo en la posición del convoy (0 = principal), p. ej. `MARCA-AÑO-PLACA`. */
@@ -122,6 +148,19 @@ export function tripEquipmentDisplayAt(
     return label;
   }
   return id || '—';
+}
+
+export function tripEquipmentPlateAt(
+  trip: Pick<Trip, 'equipmentIds'>,
+  index: number,
+  equipmentCatalog?: readonly Equipment[],
+): string {
+  const id = resourceIdKey(trip.equipmentIds?.[index]);
+  if (!id || !equipmentCatalog?.length) {
+    return '—';
+  }
+  const eq = equipmentCatalog.find((e) => resourceIdsEqual(e.id, id));
+  return eq?.plate?.trim() || '—';
 }
 
 export function buildOperatorNameLookup(

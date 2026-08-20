@@ -42,9 +42,9 @@ export interface CreateTripPayload {
   equipmentIds: string[];
   /** Salida planificada (planned_departure_at). */
   plannedDepartureAt: string;
-  /** Llegada al cliente (planned_arrival_at). */
+  /** Cita cliente (planned_arrival_at). */
   plannedArrivalAt: string;
-  /** Fin de maniobra (planned_completion_at). */
+  /** Llegada origen (planned_completion_at). */
   plannedCompletionAt: string;
   routeDistanceKm?: number | null;
   maneuverKind?: string;
@@ -72,7 +72,7 @@ export interface TripLoadInfoPayload {
 
 /** PATCH /trips/:id — registro o actualización de la entrega de vacío. */
 export interface TripEmptyDeliveryPayload {
-  /** ISO 8601; el backend valida que no sea menor al fin planeado ni al real. */
+  /** ISO 8601; el backend valida que no sea menor a la llegada origen planeada ni a la real. */
   emptyDeliveryAt: string;
   emptyDeliveryPlace: string;
   /** Obligatoria únicamente al modificar una entrega existente. */

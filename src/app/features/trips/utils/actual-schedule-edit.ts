@@ -107,17 +107,17 @@ export function validateActualScheduleChronology(params: {
   const { departureIso: dep, arrivedIso: arr, returnIso: ret } = params;
   if (dep && arr) {
     if (new Date(dep).getTime() >= new Date(arr).getTime()) {
-      return 'El cronograma real debe cumplir: salida < llegada cliente.';
+      return 'El cronograma real debe cumplir: salida < cita cliente.';
     }
   }
   if (arr && ret) {
     if (new Date(arr).getTime() >= new Date(ret).getTime()) {
-      return 'La fecha fin real no puede ser anterior a la llegada con cliente.';
+      return 'La llegada origen real no puede ser anterior a la cita cliente.';
     }
   }
   if (dep && ret && !arr) {
     if (new Date(dep).getTime() >= new Date(ret).getTime()) {
-      return 'El cronograma real debe cumplir: salida < fin.';
+      return 'El cronograma real debe cumplir: salida < llegada origen.';
     }
   }
   return null;

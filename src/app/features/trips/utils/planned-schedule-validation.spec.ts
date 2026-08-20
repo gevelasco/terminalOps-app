@@ -27,16 +27,16 @@ describe('planned-schedule-validation', () => {
 
   it('reports specific order issues', () => {
     expect(plannedScheduleArrivalOrderIssue(dep, '2026-06-01T07:00')).toContain(
-      'llegada al cliente',
+      'cita cliente',
     );
     expect(plannedScheduleCompletionOrderIssue(arr, '2026-06-01T11:00')).toContain(
-      'llegada / fin',
+      'llegada origen',
     );
     expect(
       plannedScheduleCompletionDepartureOrderIssue(dep, '2026-05-31T23:00'),
     ).toContain('salida');
     expect(plannedScheduleOrderToastMessage(dep, '2026-06-01T07:00', fin)).toContain(
-      'llegada al cliente',
+      'cita cliente',
     );
   });
 });

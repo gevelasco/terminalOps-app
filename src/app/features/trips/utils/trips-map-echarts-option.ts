@@ -24,11 +24,17 @@ import {
 
 export const TRIPS_MAP_GEO_NAME = 'mexico';
 
+/** Polilínea [lng, lat] por tripId (geometría OSRM). */
+export type TripMapRouteGeometryById = ReadonlyMap<
+  string,
+  ReadonlyArray<readonly [number, number]>
+>;
+
 export type TripsMapRouteDatum = {
   tripId: string;
   maneuverCode: string;
   status: string;
-  coords: [[number, number], [number, number]];
+  coords: Array<[number, number]>;
   lineStyle: {
     color: string;
     width: number;
@@ -64,7 +70,24 @@ function resolvePlottableCoords(
   return { lat, lng };
 }
 
-export function buildTripsMapChartData(items: readonly TripMapItem[]) {
+function routeCoordsForItem(
+  origin: { lng: number; lat: number },
+  destination: { lng: number; lat: number },
+  geometry: ReadonlyArray<readonly [number, number]> | undefined,
+): Array<[number, number]> {
+  if (geometry && geometry.length >= 2) {
+    return geometry.map(([lng, lat]) => [lng, lat]);
+  }
+  return [
+    [origin.lng, origin.lat],
+    [destination.lng, destination.lat],
+  ];
+}
+
+export function buildTripsMapChartData(
+  items: readonly TripMapItem[],
+  geometries?: TripMapRouteGeometryById,
+) {
   const routes: TripsMapRouteDatum[] = [];
   const origins: TripsMapPointDatum[] = [];
   const destinations: TripsMapPointDatum[] = [];
@@ -98,23 +121,26 @@ export function buildTripsMapChartData(items: readonly TripMapItem[]) {
 
     if (originCoords && destinationCoords) {
       const colors = tripsMapRouteColor(item.status);
+      const coords = routeCoordsForItem(
+        originCoords,
+        destinationCoords,
+        geometries?.get(item.id),
+      );
+      const followsRoad = coords.length > 2;
       routes.push({
         tripId: item.id,
         maneuverCode: item.maneuverCode,
         status: item.status,
-        coords: [
-          [originCoords.lng, originCoords.lat],
-          [destinationCoords.lng, destinationCoords.lat],
-        ],
+        coords,
         lineStyle: {
           color: colors.line,
-          width: 1.4,
-          opacity: 0.65,
-          curveness: 0.18,
+          width: followsRoad ? 2 : 1.4,
+          opacity: followsRoad ? 0.8 : 0.55,
+          curveness: 0,
         },
         effect: {
           show: true,
-          period: 6,
+          period: followsRoad ? 8 : 6,
           trailLength: 0.12,
           symbol: 'arrow',
           symbolSize: 5,
@@ -130,8 +156,12 @@ export function buildTripsMapChartData(items: readonly TripMapItem[]) {
 export function buildTripsMapEchartsOption(
   items: readonly TripMapItem[],
   geoJson?: MexicoStatesGeoJson | null,
+  geometries?: TripMapRouteGeometryById,
 ): EChartsOption {
-  const { routes, origins, destinations } = buildTripsMapChartData(items);
+  const { routes, origins, destinations } = buildTripsMapChartData(
+    items,
+    geometries,
+  );
   const viewport = computeTripsMapViewport(items);
   const stateBreakdown = geoJson
     ? countManeuversByDestinationStateBreakdown(items, geoJson)
@@ -189,7 +219,10 @@ export function buildTripsMapEchartsOption(
       return null;
     }
     if ('coords' in data) {
-      return `<strong>${data.maneuverCode}</strong><br/>Ruta operativa`;
+      const tracingRoad = data.coords.length > 2;
+      return `<strong>${data.maneuverCode}</strong><br/>${
+        tracingRoad ? 'Ruta por carretera' : 'Trazando ruta…'
+      }`;
     }
     return `<strong>${data.maneuverCode}</strong><br/>Origen: ${data.pointLabel}`;
   };
@@ -272,6 +305,7 @@ export function buildTripsMapEchartsOption(
         name: 'Rutas',
         type: 'lines',
         coordinateSystem: 'geo',
+        polyline: true,
         zlevel: 1,
         data: routes,
       },

@@ -21,7 +21,7 @@
       <to-fleet-resource-link-input
         resource="unit"
         [label]="kind() === 'verification' ? 'Unidad *' : 'Unidad'"
-        [displayLabel]="fleetRelationDisplayLabel()"
+        [displayLabel]="unitDisplayLabel()"
         [(resourceId)]="relatedUnitId"
       />
       @if (showVerificationScope()) {
@@ -37,7 +37,7 @@
       <to-fleet-resource-link-input
         resource="equipment"
         label="Equipo"
-        [displayLabel]="fleetRelationDisplayLabel()"
+        [displayLabel]="equipmentDisplayLabel()"
         [(resourceId)]="relatedEquipmentId"
       />
     }
@@ -45,7 +45,7 @@
       <p class="expense-op-relation__hint">{{ operatorHint() }}</p>
       <to-operator-link-input
         label="Operador"
-        [displayLabel]="fleetRelationDisplayLabel()"
+        [displayLabel]="operatorDisplayLabel()"
         [(operatorId)]="relatedOperatorId"
       />
     }

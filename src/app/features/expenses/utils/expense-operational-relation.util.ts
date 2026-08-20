@@ -45,9 +45,9 @@ export function inferExpenseRelationTab(
 
 export function expenseRelationTripHint(isManiobraRubro: boolean): string {
   if (isManiobraRubro) {
-    return 'Obligatorio para rubro maniobra: busca por código. El código aparecerá en la columna Maniobra del listado.';
+    return 'Obligatorio para rubro maniobra: busca por código. El código aparecerá en la columna Maniobra del listado. Unidad y operador se toman de la maniobra.';
   }
-  return 'Opcional: vincula una maniobra si el gasto corresponde a un viaje concreto.';
+  return 'Opcional: vincula una maniobra si el gasto corresponde a un viaje concreto. Al vincularla se asignan unidad y operador de esa maniobra.';
 }
 
 export function expenseRelationUnitHint(kind: ExpenseKind): string {

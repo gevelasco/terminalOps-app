@@ -33,6 +33,7 @@ import type {
   OperatorLicenseType,
   OperatorPaymentSchedule,
 } from '@shared/models/logistics.models';
+import { beginInFlight } from '@shared/utils/in-flight-guard';
 import { OperatorCoverageFieldsComponent } from '../operator-coverage-fields/operator-coverage-fields.component';
 import { OperatorEmergencyContactFieldsComponent } from '../operator-emergency-contact-fields/operator-emergency-contact-fields.component';
 import { OperatorIdentificationFieldsComponent } from '../operator-identification-fields/operator-identification-fields.component';
@@ -165,6 +166,9 @@ export class OperatorsNewDrawerComponent {
   }
 
   submit(): void {
+    if (this.saving()) {
+      return;
+    }
     const name = this.name().trim();
     const licenseNumber = this.licenseNumber().trim().toUpperCase();
     const licenseExpiresOn = this.licenseExpiresOn().trim();
@@ -264,7 +268,9 @@ export class OperatorsNewDrawerComponent {
       documents: [],
     }) as unknown as Omit<Operator, 'id'>;
 
-    this.saving.set(true);
+    if (!beginInFlight(this.saving)) {
+      return;
+    }
     this.operatorsFeature
       .createOperator(payload)
       .pipe(

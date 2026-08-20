@@ -37,6 +37,7 @@ import { ToSideDrawerComponent } from '@shared/ui/to-side-drawer/to-side-drawer.
 import { ToSelectComponent } from '@shared/ui/to-select/to-select.component';
 import { ToFleetBrandComboboxComponent } from '@shared/ui/to-fleet-brand-combobox/to-fleet-brand-combobox.component';
 import { ToFleetVersionComboboxComponent } from '@shared/ui/to-fleet-version-combobox/to-fleet-version-combobox.component';
+import { beginInFlight } from '@shared/utils/in-flight-guard';
 import { deriveFleetBrandAbbr } from '@shared/utils/fleet/derive-fleet-brand-abbr';
 import { registerFleetVersionResetOnBrandChange } from '@shared/utils/fleet/fleet-brand-version-link';
 import { ToTextareaComponent } from '@shared/ui/to-textarea/to-textarea.component';
@@ -415,6 +416,9 @@ export class FleetNewUnitDrawerComponent {
   }
 
   submit(): void {
+    if (this.saving()) {
+      return;
+    }
     const brandName = this.brandName().trim();
     const versionName = this.trailerVersion().trim();
     const yearRaw = this.modelYear().trim();
@@ -665,7 +669,9 @@ export class FleetNewUnitDrawerComponent {
       })),
     ];
 
-    this.saving.set(true);
+    if (!beginInFlight(this.saving)) {
+      return;
+    }
     this.unitsFeature
       .createUnit({
         plate,

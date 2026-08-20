@@ -373,7 +373,7 @@ export class TripsPageComponent implements OnInit {
     { key: 'unitId', label: 'Unidad', cell: 'muted-badge' },
     { key: 'status', label: 'Estado', cell: 'maniobra-status' },
     { key: 'departureAt', label: 'Salida', cell: 'datetime-stacked' },
-    { key: 'arrivedAt', label: 'Llegada', cell: 'datetime-stacked' },
+    { key: 'arrivedAt', label: 'Cita cliente', cell: 'datetime-stacked' },
     { key: 'operationType', label: 'Configuración', cell: 'operation-type' },
     { key: 'hasIncident', label: 'Incidente', cell: 'incident-dot' },
   ];

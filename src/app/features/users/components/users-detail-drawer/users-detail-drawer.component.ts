@@ -256,6 +256,9 @@ export class UsersDetailDrawerComponent {
   }
 
   savePersonalSection(): void {
+    if (this.saving()) {
+      return;
+    }
     const companyId = this.session.companyId();
     if (!companyId) {
       return;
@@ -308,6 +311,9 @@ export class UsersDetailDrawerComponent {
   }
 
   savePasswordSection(): void {
+    if (this.saving()) {
+      return;
+    }
     const companyId = this.session.companyId();
     if (!companyId) {
       return;
@@ -356,6 +362,9 @@ export class UsersDetailDrawerComponent {
   }
 
   savePermissionsSection(): void {
+    if (this.saving()) {
+      return;
+    }
     const companyId = this.session.companyId();
     if (!companyId) {
       return;

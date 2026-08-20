@@ -14,6 +14,7 @@ import { ToastService } from '@core/notifications/toast.service';
 import { ExpensesService } from '@services/api/expenses';
 import { EquipmentService } from '@services/api/equipment';
 import { OperatorsService } from '@services/api/operators';
+import { UnitsService } from '@services/api/units';
 import {
   tripBitacoraEntriesSorted,
   tripIncidentPostedBy,
@@ -29,13 +30,37 @@ import {
 import {
   dateTimeLocalValueToIso,
   isoToDateTimeLocalValue,
+  sameScheduleInstant,
 } from '@features/trips/utils/datetime-local';
+import {
+  rememberEmptyDeliveryOriginalAt,
+  resolveEmptyDeliveryOriginalAt,
+} from '@features/trips/utils/empty-delivery-original.util';
+import { canRegisterTripEmptyDelivery } from '@features/trips/utils/empty-delivery-eligibility';
+import {
+  tripActualArrivalIso,
+  tripActualCompletionIso,
+  tripActualDepartureIso,
+  tripArrivalIso,
+  tripCompletionIso,
+  tripDepartureIso,
+} from '@features/trips/utils/trip-schedule-accessors';
+import {
+  buildTripTimelineProgress,
+  tripTimelineStepsFromSchedule,
+  type TripTimelineStepId,
+} from '@features/trips/utils/trip-timeline-progress';
 import { TripLoadPlacesFeatureService } from '@features/trips/services/trip-load-places.service';
 import { tripCargoDescriptionDisplay } from '@features/trips/utils/trip-cargo-description';
 import {
   buildManiobraSettlementSummary,
   formatSettlementMxn,
 } from '@features/trips/utils/maniobra-settlement';
+import {
+  buildManiobraSettlementDocument,
+  printManiobraSettlementDocument,
+  type SettlementDocumentField,
+} from '@features/trips/utils/maniobra-settlement-document';
 import { tripStatusUiLabel } from '@shared/utils/trip-status-ui';
 import { OperationConfigurationResolverService } from '@shared/services/operation-configuration-resolver.service';
 import {
@@ -46,8 +71,11 @@ import {
 import { operatorLicenseExpiresLabelFromIso } from '@features/trips/utils/operator-license-display';
 import {
   formatTripEndpointFromParts,
+  tripAssignedUnitId,
   tripOperatorDisplayName,
   tripEquipmentDisplayAt,
+  tripEquipmentPlateAt,
+  tripUnitDisplayCode,
 } from '@features/trips/utils/trip-display-labels';
 import {
   derivedDieselPricePerLiter,
@@ -68,6 +96,7 @@ import {
   TripIncident,
   TripLoadType,
   TripStoredDocument,
+  Unit,
 } from '@shared/models/logistics.models';
 import { DateShortPipe } from '@shared/pipes/date-short.pipe';
 import { type ToSegmentTab } from '@shared/ui/to-segment-control/to-segment-control.component';
@@ -102,6 +131,7 @@ export class TripsDetailDrawerFacade {
   private readonly expensesApi = inject(ExpensesService);
   private readonly equipmentApi = inject(EquipmentService);
   private readonly operatorsApi = inject(OperatorsService);
+  private readonly unitsApi = inject(UnitsService);
   private readonly centersFeature = inject(OperationalCentersFeatureService);
   private readonly destinationRatesFeature = inject(DestinationRatesFeatureService);
   readonly loadPlacesCatalog = inject(TripLoadPlacesFeatureService);
@@ -110,6 +140,7 @@ export class TripsDetailDrawerFacade {
   private readonly equipmentCatalog = signal<readonly Equipment[]>([]);
   private equipmentCatalogLoadStarted = false;
   private readonly liveOperator = signal<Operator | null>(null);
+  private readonly liveUnit = signal<Unit | null>(null);
 
   private dismissCallback: (() => void) | null = null;
   private closeCancelDialogCallback: (() => void) | null = null;
@@ -155,6 +186,7 @@ export class TripsDetailDrawerFacade {
   private readonly bitacoraImageLoading = new Set<string>();
   readonly bitacoraSaving = signal(false);
   readonly collectSaving = signal(false);
+  readonly settlementPdfGenerating = signal(false);
   readonly cancelSubmitting = signal(false);
   readonly deleteConfirmOpen = signal(false);
   readonly deleteInTransitAck = signal(false);
@@ -171,6 +203,8 @@ export class TripsDetailDrawerFacade {
   readonly emptyDeliveryJustificationDraft = signal('');
   readonly emptyDeliveryNewFiles = signal<File[]>([]);
   readonly emptyDeliverySaving = signal(false);
+  /** Primera fecha de vacío vista en esta visita; sirve para mostrar la actualización. */
+  private readonly emptyDeliveryOriginalAt = signal<string | null>(null);
   readonly loadDateDraft = signal('');
   readonly loadPlaceDraft = signal('');
   readonly detailTab = signal<TripsDetailTab>('maneuver');
@@ -224,29 +258,15 @@ export class TripsDetailDrawerFacade {
     );
   });
   /**
-   * Entrega de vacío: solo maniobras en curso o completadas y
-   * con contenedor de por medio (tipo de contenedor distinto de «No aplica»).
+   * Entrega de vacío: opcional. Se puede agregar o editar en curso o completada
+   * (aunque no se haya capturado al programar).
    */
-  readonly canRegisterEmptyDelivery = computed(() => {
-    const trip = this.tripsFeature.selectedTrip();
-    const status = trip?.status;
-    const containerType = trip?.containerType
-      ?.trim()
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '');
-    const noContainer =
-      !containerType ||
-      containerType === 'na' ||
-      containerType === 'n/a' ||
-      containerType === 'no aplica';
-    return (
-      this.canWriteTrips() &&
-      !noContainer &&
-      (status === 'in_transit' || status === 'completed') &&
-      !isTripFollowUpLocked(trip)
-    );
-  });
+  readonly canRegisterEmptyDelivery = computed(() =>
+    canRegisterTripEmptyDelivery(
+      this.tripsFeature.selectedTrip(),
+      this.canWriteTrips(),
+    ),
+  );
   readonly realScheduleDrafts = computed(
     (): ActualScheduleDrafts => ({
       departureAt: this.realDepartureDraft(),
@@ -275,9 +295,20 @@ export class TripsDetailDrawerFacade {
         this.detailTabTripId = t.id;
         this.detailTab.set(defaultDetailTabForTrip(t));
         this.closeEmptyDeliveryForm();
+        this.emptyDeliveryOriginalAt.set(
+          resolveEmptyDeliveryOriginalAt(t.id, t.emptyDeliveryAt),
+        );
         this.bitacoraDraft.set('');
         this.markAsIncidentDraft.set(false);
         this.clearBitacoraDraftImages();
+      } else if (!this.emptyDeliveryOriginalAt()) {
+        this.emptyDeliveryOriginalAt.set(
+          resolveEmptyDeliveryOriginalAt(t.id, t.emptyDeliveryAt),
+        );
+      }
+      const originalAt = this.emptyDeliveryOriginalAt();
+      if (originalAt) {
+        rememberEmptyDeliveryOriginalAt(t.id, originalAt);
       }
       this.ensureEquipmentCatalogLoaded();
       this.centersFeature.loadOperationalCenters();
@@ -300,6 +331,25 @@ export class TripsDetailDrawerFacade {
         .getOperatorById(operatorId)
         .pipe(catchError(() => of(null)))
         .subscribe((op) => this.liveOperator.set(op));
+      onCleanup(() => sub.unsubscribe());
+    });
+
+    effect((onCleanup) => {
+      const t = this.tripsFeature.selectedTrip();
+      const unitId = tripAssignedUnitId(t ?? { unitId: '', equipmentIds: [] }, this.equipmentCatalog());
+      if (!unitId) {
+        this.liveUnit.set(null);
+        return;
+      }
+      const current = this.liveUnit();
+      if (current && resourceIdsEqual(current.id, unitId)) {
+        return;
+      }
+      this.liveUnit.set(null);
+      const sub = this.unitsApi
+        .getUnitById(unitId)
+        .pipe(catchError(() => of(null)))
+        .subscribe((unit) => this.liveUnit.set(unit));
       onCleanup(() => sub.unsubscribe());
     });
 
@@ -492,19 +542,59 @@ export class TripsDetailDrawerFacade {
     return this.dateShort.transform(iso ?? undefined);
   }
 
+  private timelineProgress(): {
+    reached: ReadonlySet<TripTimelineStepId>;
+    current: TripTimelineStepId | null;
+  } {
+    const trip = this.trip();
+    return buildTripTimelineProgress(
+      tripTimelineStepsFromSchedule({
+        createdAt: trip.createdAt,
+        loadDate: trip.loadDate,
+        hasLoadStep: Boolean(trip.loadDate || trip.loadPlace),
+        departureIso: tripDepartureIso(trip),
+        arrivalIso: tripArrivalIso(trip),
+        completionIso: tripCompletionIso(trip),
+        showEmptyDelivery: this.showEmptyDeliveryTimelineStep(),
+        emptyDeliveryIso: this.emptyDeliveryUpdateAt() ?? this.emptyDeliveryPrimaryAt(),
+      }),
+      Date.now(),
+    );
+  }
+
+  timelineStepReached(step: TripTimelineStepId): boolean {
+    return this.timelineProgress().reached.has(step);
+  }
+
+  timelineStepCurrent(step: TripTimelineStepId): boolean {
+    return this.timelineProgress().current === step;
+  }
+
   showRealScheduleField(field: ActualScheduleFieldKey): boolean {
     const t = this.trip();
     if (t.status === 'scheduled') {
       return false;
     }
-    const persisted = Boolean(t[field]?.trim());
-    if (!persisted) {
+    const actualIso = this.actualScheduleIso(field);
+    if (!actualIso) {
       return false;
     }
     if (!this.realDatesEditEnabled()) {
       return true;
     }
     return !isActualScheduleFieldEditable(t.status, field);
+  }
+
+  actualScheduleIso(field: ActualScheduleFieldKey): string | null {
+    const t = this.trip();
+    switch (field) {
+      case 'departureAt':
+        return tripActualDepartureIso(t);
+      case 'arrivedAt':
+        return tripActualArrivalIso(t);
+      case 'returnAt':
+        return tripActualCompletionIso(t);
+    }
   }
 
   canEditRealScheduleField(field: ActualScheduleFieldKey): boolean {
@@ -643,7 +733,7 @@ export class TripsDetailDrawerFacade {
       new Date(completionIso).getTime() < new Date(arrivalIso).getTime()
     ) {
       this.toast.show(
-        'Las fechas deben respetar el orden: salida, llegada y fin.',
+        'Las fechas deben respetar el orden: salida, cita cliente y llegada origen.',
         'warning',
       );
       return;
@@ -694,7 +784,37 @@ export class TripsDetailDrawerFacade {
     return Boolean(this.trip().emptyDeliveryAt?.trim());
   }
 
-  /** Piso del datepicker: la mayor entre fin planeado y fin real. */
+  private emptyDeliveryCurrentAt(): string | null {
+    return this.trip().emptyDeliveryAt?.trim() || null;
+  }
+
+  /** Fecha original de vacío (primera captura persistida). */
+  emptyDeliveryPrimaryAt(): string | null {
+    return this.emptyDeliveryOriginalAt() || this.emptyDeliveryCurrentAt();
+  }
+
+  /**
+   * Fecha persistida si ya se guardó un cambio respecto a la original.
+   * No usa el borrador: solo aparece tras «Actualizar entrega».
+   */
+  emptyDeliveryUpdateAt(): string | null {
+    const current = this.emptyDeliveryCurrentAt();
+    const original = this.emptyDeliveryOriginalAt();
+    if (!current || !original || sameScheduleInstant(current, original)) {
+      return null;
+    }
+    return current;
+  }
+
+  emptyDeliveryTimelinePlace(): string {
+    return this.trip().emptyDeliveryPlace?.trim() ?? '';
+  }
+
+  showEmptyDeliveryTimelineStep(): boolean {
+    return Boolean(this.emptyDeliveryPrimaryAt() || this.emptyDeliveryTimelinePlace());
+  }
+
+  /** Piso del datepicker: la mayor entre llegada origen planeada y real. */
   emptyDeliveryMinLocal(): string | undefined {
     const iso = this.emptyDeliveryMinIso();
     const local = isoToDateTimeLocalValue(iso);
@@ -791,13 +911,14 @@ export class TripsDetailDrawerFacade {
     const minIso = this.emptyDeliveryMinIso();
     if (minIso && new Date(iso).getTime() < new Date(minIso).getTime()) {
       this.toast.show(
-        'La entrega de vacío no puede ser anterior al fin planeado ni al fin real.',
+        'La entrega de vacío no puede ser anterior a la llegada origen planeada ni a la real.',
         'warning',
       );
       return;
     }
 
     const tripId = this.trip().id;
+    const previousAt = this.emptyDeliveryCurrentAt();
     const pendingFiles = this.emptyDeliveryNewFiles();
     this.emptyDeliverySaving.set(true);
     this.tripsFeature
@@ -835,6 +956,15 @@ export class TripsDetailDrawerFacade {
       )
       .subscribe({
         next: () => {
+          rememberEmptyDeliveryOriginalAt(
+            tripId,
+            this.emptyDeliveryOriginalAt() || previousAt || iso,
+          );
+          if (!this.emptyDeliveryOriginalAt()) {
+            this.emptyDeliveryOriginalAt.set(
+              resolveEmptyDeliveryOriginalAt(tripId, previousAt || iso),
+            );
+          }
           this.emptyDeliverySaving.set(false);
           this.loadPlacesCatalog.registerLocalPlace(place);
           this.closeEmptyDeliveryForm();
@@ -865,9 +995,20 @@ export class TripsDetailDrawerFacade {
   }
 
   unitDisplay(): string {
+    return tripUnitDisplayCode(this.trip(), undefined, this.liveUnit());
+  }
+
+  private unitPlateDisplay(): string {
+    return this.liveUnit()?.plate?.trim() || '—';
+  }
+
+  private programmedByDisplay(): string {
     const t = this.trip();
-    const code = t.unitOperationalCode?.trim() || t.unitId?.trim();
-    return code || '—';
+    return t.createdByName?.trim() || t.createdByUsername?.trim() || '—';
+  }
+
+  private equipmentPlateAt(index: number): string {
+    return tripEquipmentPlateAt(this.trip(), index, this.equipmentCatalog());
   }
 
   destinationRateDisplay(): string {
@@ -1163,6 +1304,175 @@ export class TripsDetailDrawerFacade {
       default:
         return `${base} maniobra-settlement__badge--neutral`;
     }
+  }
+
+  generateSettlementDocument(): void {
+    if (!this.showsSettlementTab() || this.settlementPdfGenerating()) {
+      return;
+    }
+    this.settlementPdfGenerating.set(true);
+    const settlementDoc = this.buildSettlementDocument();
+    void printManiobraSettlementDocument(settlementDoc.html, settlementDoc.fileTitle)
+      .catch(() => {
+        this.toast.show(
+          'No se pudo generar el PDF de liquidación. Inténtalo de nuevo.',
+          'error',
+        );
+      })
+      .finally(() => this.settlementPdfGenerating.set(false));
+  }
+
+  private dashField(value: string | null | undefined): string {
+    const t = value?.trim();
+    return t ? t : '—';
+  }
+
+  private buildSettlementDocument() {
+    const trip = this.trip();
+    const summary = this.settlementSummary();
+    const push = (
+      fields: SettlementDocumentField[],
+      label: string,
+      value: string | null | undefined,
+      opts?: { skipEmpty?: boolean },
+    ): void => {
+      const resolved = this.dashField(value);
+      if (opts?.skipEmpty && resolved === '—') {
+        return;
+      }
+      fields.push({ label, value: resolved });
+    };
+
+    const identification: SettlementDocumentField[] = [];
+    push(identification, 'Código de maniobra', trip.maneuverCode);
+    push(identification, 'Estado', this.detailStatusLabel());
+    if (this.showsClientBillingBlock()) {
+      push(identification, 'Cliente', trip.clientName);
+    }
+    push(identification, 'Programada', this.fmt(trip.createdAt));
+    push(identification, 'Programó', this.programmedByDisplay());
+
+    const route: SettlementDocumentField[] = [];
+    push(route, 'Centro operativo', this.originOperationalCenterDisplay(), {
+      skipEmpty: true,
+    });
+    push(route, 'Origen', this.originEndpointDisplay());
+    push(route, 'Destino', this.destinationEndpointDisplay());
+    push(route, 'Distancia de ruta (ida)', this.routeDistanceDisplay());
+    push(route, 'Distancia operativa', this.operationalDistanceDisplay());
+    push(route, 'Tipo de maniobra', this.maneuverKindDisplay());
+    push(route, 'Salida', this.plannedScheduleDisplay(tripDepartureIso(trip)));
+    push(route, 'Cita cliente', this.plannedScheduleDisplay(tripArrivalIso(trip)));
+    push(route, 'Llegada origen', this.plannedScheduleDisplay(tripCompletionIso(trip)));
+    push(route, 'Tarifa de destino', this.destinationRateDisplay(), {
+      skipEmpty: true,
+    });
+
+    const cargo: SettlementDocumentField[] = [];
+    push(cargo, 'Carga', this.plannedScheduleDisplay(trip.loadDate));
+    push(cargo, 'Lugar de carga', this.loadPlaceDisplay());
+    push(cargo, 'Configuración', this.operationLabel());
+    push(cargo, 'Tipo de carga', this.loadLabel(trip.loadType));
+    push(cargo, 'Descripción', this.cargoDescriptionDisplay());
+    push(cargo, 'Tipo de contenedor', this.containerLabel(trip.containerType));
+    push(cargo, 'Peso aproximado', this.weightDisplay());
+    if (this.showEmptyDeliveryTimelineStep()) {
+      push(
+        cargo,
+        'Entrega de vacío',
+        this.plannedScheduleDisplay(this.emptyDeliveryPrimaryAt()),
+      );
+      push(cargo, 'Lugar de entrega de vacío', this.emptyDeliveryTimelinePlace(), {
+        skipEmpty: true,
+      });
+      const updateAt = this.emptyDeliveryUpdateAt();
+      if (updateAt) {
+        push(cargo, 'Actualización en entrega', this.plannedScheduleDisplay(updateAt));
+      }
+    }
+
+    const assignmentOperator: SettlementDocumentField[] = [];
+    push(assignmentOperator, 'Operador', this.operatorName());
+    push(assignmentOperator, 'No. de licencia', this.operatorLicenseNumberDisplay());
+    push(
+      assignmentOperator,
+      'Vencimiento de licencia',
+      this.operatorLicenseExpiresDisplay(),
+    );
+    const assignment: SettlementDocumentField[] = [];
+    push(assignment, 'Unidad', this.unitDisplay());
+    push(assignment, 'Placa de la unidad', this.unitPlateDisplay());
+    if (this.isFullTrip()) {
+      push(assignment, 'Equipo 1', this.equipmentAt(0));
+      push(assignment, 'Placa equipo 1', this.equipmentPlateAt(0), { skipEmpty: true });
+      push(assignment, 'Equipo 2', this.equipmentAt(1));
+      push(assignment, 'Placa equipo 2', this.equipmentPlateAt(1), { skipEmpty: true });
+    } else {
+      const equipmentLabel = this.equipmentAt(0);
+      if (equipmentLabel !== '—') {
+        push(assignment, 'Equipo', equipmentLabel);
+        push(assignment, 'Placa del equipo', this.equipmentPlateAt(0), {
+          skipEmpty: true,
+        });
+      }
+    }
+
+    const billing: SettlementDocumentField[] = [];
+    if (!this.showsClientBillingBlock()) {
+      push(
+        billing,
+        'Cobro',
+        'Maniobra interna: sin cliente externo ni cobro registrado.',
+      );
+    } else {
+      push(billing, 'Cliente', trip.clientName);
+      push(billing, 'Importe pactado', this.displayMoney(trip.clientCharge));
+      push(billing, 'Método de pago', this.paymentLabel(trip.paymentMethod));
+      push(billing, 'Días de crédito', this.creditDaysLabel());
+      push(billing, 'Requiere factura', this.invoiceLabel());
+      push(billing, 'Estatus de cobro', summary.paymentStatusLabel);
+      if (summary.paymentDetail) {
+        push(billing, 'Detalle', summary.paymentDetail);
+      }
+      if (summary.collectedAtLabel) {
+        push(billing, 'Fecha de cobro', summary.collectedAtLabel);
+      }
+      if (summary.dueDateLabel) {
+        push(billing, 'Vencimiento de crédito', summary.dueDateLabel);
+      }
+    }
+
+    return buildManiobraSettlementDocument({
+      companyName: this.session.companyName()?.trim() || 'TerminalOps',
+      companyTagline:
+        this.session.companyTagline()?.trim() || 'Operaciones logísticas',
+      companyLogoDataUrl: this.session.companyLogoDataUrl(),
+      generatedAt: new Date(),
+      generatedBy:
+        this.session.name()?.trim() || this.session.username()?.trim() || 'Sistema',
+      maneuverCode: trip.maneuverCode?.trim() || trip.id,
+      statusLabel: this.detailStatusLabel(),
+      completedAtLabel: this.plannedScheduleDisplay(
+        tripCompletionIso(trip) ?? trip.completedAt,
+      ),
+      identification,
+      route,
+      cargo,
+      assignmentOperator,
+      assignment,
+      billing,
+      charged: summary.charged,
+      spent: summary.spent,
+      margin: summary.margin,
+      marginPct: summary.marginPct,
+      paymentStatusLabel: summary.paymentStatusLabel,
+      expenses: summary.lines.map((line) => ({
+        label: line.label,
+        detail: line.detail,
+        incurredAtLabel: this.settlementLineDate(line.incurredAt),
+        amount: line.amount,
+      })),
+    });
   }
 
   litersDisplay(raw: string | undefined): string {

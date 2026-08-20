@@ -83,7 +83,7 @@ export class TripsFormCatalogService {
   }
 
   /**
-   * Unidades disponibles; se dispara al enfocar el input de unidad.
+   * Unidades disponibles (`?available=true`); se dispara al enfocar el input.
    * Cada unidad ya incluye sus equipos enganchados (`hitchedEquipment`),
    * por lo que no se necesita el catálogo de /equipment.
    */
@@ -113,7 +113,7 @@ export class TripsFormCatalogService {
     );
   }
 
-  /** Operadores disponibles; se dispara al enfocar el input de operador. */
+  /** Operadores disponibles (`?available=true`); se dispara al enfocar el input. */
   ensureOperatorsLoaded(): void {
     if (this.disposed || this.operatorsStarted) {
       return;

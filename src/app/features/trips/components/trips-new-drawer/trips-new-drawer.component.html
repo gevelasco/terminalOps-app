@@ -2,6 +2,7 @@
   titleId="maniobra-drawer-title"
   wide
   formMode
+  [formBusy]="creating()"
   [loading]="drawerBusy()"
   skeletonVariant="form"
   bodyClass="maniobra-drawer__body"
@@ -74,7 +75,6 @@
           [maxLength]="5"
           inputName="originCp"
           autocomplete="postal-code"
-          [disabled]="originRouteFieldsLocked()"
           [(value)]="originCp"
           (blurNotify)="onOriginCpBlur()"
         />
@@ -94,10 +94,7 @@
           placeholder="Elige localidad en la lista (requerido para calcular ruta)"
           [options]="originLocalitySelectOptions()"
           [(value)]="originLocalityKey"
-          [disabled]="
-            originRouteFieldsLocked() ||
-            originLocalitySelectOptions().length === 0
-          "
+          [disabled]="originLocalitySelectOptions().length === 0"
         />
       </div>
       <div class="maniobra-cp-stack">
@@ -132,7 +129,7 @@
     </div>
     <div class="maniobra-drawer__grid3">
       <to-display-field
-        label="Distancia de ruta"
+        label="Distancia de ruta (ida)"
         variant="metric"
         [value]="routeDistanceOneWayDisplayValue()"
         placeholder="Calculado vía OSRM"
@@ -141,7 +138,7 @@
         label="Distancia total"
         variant="metric"
         [value]="operationalDistanceDisplayValue()"
-        placeholder="Calculado vía"
+        placeholder="Ruta × 2"
       />
       <to-display-field
         label="Tipo de maniobra"
@@ -158,14 +155,14 @@
     />
     <div class="maniobra-drawer__grid2">
       <to-input
-        label="Llegada cliente *"
+        label="Cita cliente *"
         type="datetime-local"
         [min]="plannedDepartureDateTime() || undefined"
         [(value)]="plannedArrivalDateTime"
         (blurNotify)="onPlannedArrivalBlur()"
       />
       <to-input
-        label="Llegada / fin *"
+        label="Llegada origen *"
         type="datetime-local"
         [min]="plannedArrivalDateTime() || plannedDepartureDateTime() || undefined"
         [(value)]="plannedCompletionDateTime"
@@ -210,7 +207,7 @@
     </h3>
     <div class="maniobra-drawer__grid2">
       <to-input
-        label="Fecha de carga"
+        label="Carga"
         type="datetime-local"
         [(value)]="loadDate"
       />
@@ -363,7 +360,7 @@
         <to-fleet-compliance-icons [items]="selectedUnitComplianceIcons()" />
       }
     </div>
-    @if (unitId().trim()) {
+    @if (unitId().trim() && selectedUnitRequiresHitchedEquipment()) {
       <div class="maniobra-drawer__equipment-stack">
         <div class="maniobra-drawer__field-with-icons">
           <to-display-field
@@ -699,7 +696,7 @@
   <p class="maniobra-drawer__confirm-copy">
     Las fechas indican que concluyó
     @if (plannedCompletionDisplayLabel()) {
-      (fin: {{ plannedCompletionDisplayLabel() }})
+      (llegada origen: {{ plannedCompletionDisplayLabel() }})
     }
     , se registrará como <strong>completada</strong> y no como programada.
     <br /><br />

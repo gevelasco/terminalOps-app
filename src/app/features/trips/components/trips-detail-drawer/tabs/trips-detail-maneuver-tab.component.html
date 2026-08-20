@@ -40,20 +40,20 @@
           <dd>{{ vm.maneuverKindDisplay() }}</dd>
           <dt>Salida (plan)</dt>
           <dd>{{ vm.plannedScheduleDisplay(vm.trip().plannedDepartureAt) }}</dd>
-          <dt>Llegada cliente (plan)</dt>
+          <dt>Cita cliente (plan)</dt>
           <dd>{{ vm.plannedScheduleDisplay(vm.trip().plannedArrivalAt) }}</dd>
-          <dt>Llegada / fin (plan)</dt>
+          <dt>Llegada origen (plan)</dt>
           <dd>{{ vm.plannedScheduleDisplay(vm.trip().plannedCompletionAt) }}</dd>
           @if (vm.trip().departureAt) {
             <dt>Salida real</dt>
             <dd>{{ vm.fmt(vm.trip().departureAt) }}</dd>
           }
           @if (vm.trip().arrivedAt) {
-            <dt>Llegada real</dt>
+            <dt>Cita cliente real</dt>
             <dd>{{ vm.fmt(vm.trip().arrivedAt) }}</dd>
           }
           @if (vm.trip().returnAt) {
-            <dt>Regreso / fin real</dt>
+            <dt>Llegada origen real</dt>
             <dd>{{ vm.fmt(vm.trip().returnAt) }}</dd>
           }
           @if (vm.destinationRateDisplay()) {
@@ -84,7 +84,7 @@
           Detalles de Carga
         </h3>
         <dl class="maniobra-detail__dl">
-          <dt>Fecha de carga</dt>
+          <dt>Carga</dt>
           <dd>{{ vm.plannedScheduleDisplay(vm.trip().loadDate) }}</dd>
           <dt>Lugar de carga</dt>
           <dd>{{ vm.loadPlaceDisplay() }}</dd>

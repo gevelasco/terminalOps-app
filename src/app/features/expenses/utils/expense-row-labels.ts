@@ -104,7 +104,12 @@ export function expenseFleetRelationCode(e: Expense): string {
     case 'lodging':
       return e.relatedOperatorId?.trim() || e.relatedUnitId?.trim() || '—';
     default:
-      return '—';
+      return (
+        e.relatedUnitId?.trim() ||
+        e.relatedOperatorId?.trim() ||
+        e.relatedEquipmentId?.trim() ||
+        '—'
+      );
   }
 }
 

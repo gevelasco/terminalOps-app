@@ -62,13 +62,17 @@ export interface Trip {
   status: TripStatus;
   /** Alta de la maniobra en el sistema (`created_at`). */
   createdAt: string;
+  /** Nombre de quien programó la maniobra. */
+  createdByName?: string;
+  /** Username de quien programó la maniobra. */
+  createdByUsername?: string;
   /** Momento en que pasó a completada (`completed_at`). */
   completedAt?: string | null;
   /** Plan operativo — salida de patio. */
   plannedDepartureAt: string;
-  /** Plan operativo — llegada al cliente. */
+  /** Plan operativo — cita cliente. */
   plannedArrivalAt: string;
-  /** Plan operativo — fin de maniobra. */
+  /** Plan operativo — llegada origen. */
   plannedCompletionAt: string;
   operationType: TripOperationType;
   /** FK a configuración operativa viva (catálogo). */
@@ -77,11 +81,11 @@ export interface Trip {
   containerType: TripContainerType;
   /** Qué transporta el contenedor (mercancía, producto, referencia del cliente). */
   cargoDescription?: string;
-  /** Fecha y hora de carga (ISO 8601). */
+  /** Carga: fecha y hora (ISO 8601). */
   loadDate?: string;
   /** Lugar de carga (texto libre; catálogo por empresa). */
   loadPlace?: string;
-  /** Entrega de vacío: fecha/hora ISO (≥ fin planeado y fin real). */
+  /** Entrega de vacío: fecha/hora ISO (≥ llegada origen planeada y real). */
   emptyDeliveryAt?: string;
   /** Entrega de vacío: lugar (catálogo de lugares por empresa). */
   emptyDeliveryPlace?: string;
@@ -93,9 +97,9 @@ export interface Trip {
   equipmentIds?: string[];
   /** Salida real (null si aún no aplica). */
   departureAt: string | null;
-  /** Llegada a destino. */
+  /** Cita cliente real (null si aún no aplica). */
   arrivedAt: string | null;
-  /** Regreso / cierre de ruta. */
+  /** Llegada origen real (null si aún no aplica). */
   returnAt: string | null;
   /** Crédito pactado en días. */
   creditDays: number;

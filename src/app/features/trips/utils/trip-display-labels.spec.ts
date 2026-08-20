@@ -1,5 +1,10 @@
-import type { Equipment } from '@shared/models/logistics.models';
-import { tripEquipmentDisplayAt } from './trip-display-labels';
+import type { Equipment, Unit } from '@shared/models/logistics.models';
+import {
+  tripAssignedUnitId,
+  tripEquipmentDisplayAt,
+  tripEquipmentPlateAt,
+  tripUnitDisplayCode,
+} from './trip-display-labels';
 
 function equipment(partial: Partial<Equipment> & Pick<Equipment, 'id'>): Equipment {
   return {
@@ -9,6 +14,15 @@ function equipment(partial: Partial<Equipment> & Pick<Equipment, 'id'>): Equipme
     unitId: '1',
     ...partial,
   } as Equipment;
+}
+
+function unit(partial: Partial<Unit> & Pick<Unit, 'id'>): Unit {
+  return {
+    plate: '81-AA-9K',
+    trailerBrandAbbr: 'HYU',
+    trailerYear: '2021',
+    ...partial,
+  } as Unit;
 }
 
 describe('tripEquipmentDisplayAt', () => {
@@ -56,3 +70,75 @@ describe('tripEquipmentDisplayAt', () => {
     ).toBe('3');
   });
 });
+
+describe('tripEquipmentPlateAt', () => {
+  it('returns the plate from the catalog', () => {
+    expect(
+      tripEquipmentPlateAt(
+        { equipmentIds: ['3'] },
+        0,
+        [
+          equipment({
+            id: '3',
+            plate: 'REM-01',
+          }),
+        ],
+      ),
+    ).toBe('REM-01');
+  });
+
+  it('returns dash when the catalog has no plate', () => {
+    expect(tripEquipmentPlateAt({ equipmentIds: ['3'] }, 0, [equipment({ id: '3' })])).toBe(
+      '—',
+    );
+  });
+});
+
+describe('tripUnitDisplayCode', () => {
+  it('uses the operational code from the trip', () => {
+    expect(
+      tripUnitDisplayCode({ unitOperationalCode: 'HYU-2021-81-AA-9K', unitId: '8' }),
+    ).toBe('HYU-2021-81-AA-9K');
+  });
+
+  it('formats the live unit instead of Sin unidad', () => {
+    expect(
+      tripUnitDisplayCode({ unitId: '8' }, undefined, unit({ id: '8' })),
+    ).toBe('HYU-2021-81-AA-9K');
+  });
+
+  it('looks up the catalog when the operational code is missing', () => {
+    expect(
+      tripUnitDisplayCode({ unitId: '8' }, [unit({ id: '8' })]),
+    ).toBe('HYU-2021-81-AA-9K');
+  });
+
+  it('keeps the unit id instead of Sin unidad when the catalog is missing', () => {
+    expect(tripUnitDisplayCode({ unitId: '8' })).toBe('8');
+  });
+
+  it('returns dash when the trip has no unit', () => {
+    expect(tripUnitDisplayCode({ unitId: '' })).toBe('—');
+  });
+});
+
+describe('tripAssignedUnitId', () => {
+  it('prefers the trip unit id', () => {
+    expect(
+      tripAssignedUnitId(
+        { unitId: '8', equipmentIds: ['3'] },
+        [equipment({ id: '3', unitId: '99' })],
+      ),
+    ).toBe('8');
+  });
+
+  it('falls back to the equipment hitch when the trip unit id is empty', () => {
+    expect(
+      tripAssignedUnitId(
+        { unitId: '', equipmentIds: ['3'] },
+        [equipment({ id: '3', unitId: '8' })],
+      ),
+    ).toBe('8');
+  });
+});
+

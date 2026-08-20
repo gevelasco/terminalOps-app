@@ -850,6 +850,9 @@ export class ClientsDetailDrawerFacade {
   }
 
   private persistClient(updated: Client): void {
+    if (this.saving()) {
+      return;
+    }
     this.saving.set(true);
     this.clientsFeature
       .updateClient(updated)

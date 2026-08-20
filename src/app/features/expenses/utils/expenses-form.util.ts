@@ -218,6 +218,12 @@ export function resolveExpenseRelationFields(
       return { ok: false, message: 'Selecciona el operador.' };
     }
     relatedOperatorId = oid;
+    relatedUnitId = state.relatedUnitId.trim() || undefined;
+    relatedEquipmentId = state.relatedEquipmentId.trim() || undefined;
+  } else {
+    relatedUnitId = state.relatedUnitId.trim() || undefined;
+    relatedEquipmentId = state.relatedEquipmentId.trim() || undefined;
+    relatedOperatorId = state.relatedOperatorId.trim() || undefined;
   }
 
   return {

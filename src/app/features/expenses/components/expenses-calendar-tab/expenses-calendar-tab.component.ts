@@ -31,6 +31,7 @@ import {
 } from '@features/expenses/utils/expenses-calendar.util';
 import { formatExpenseIncurredDateDisplay } from '@features/expenses/utils/expenses-form.util';
 import {
+  calendarItemRubroLabel,
   expenseFromProjectedCalendarItem,
 } from '@features/expenses/utils/expenses-calendar-projection-expense.util';
 import type { Expense } from '@shared/models/logistics.models';
@@ -187,7 +188,7 @@ export class ExpensesCalendarTabComponent {
     this.calendarData().items.map((item) => ({
       id: item.entryType === 'actual' && item.expense?.id ? item.expense.id : item.id,
       entryType: item.entryType,
-      rubroLabel: item.rubroLabel,
+      rubroLabel: calendarItemRubroLabel(item),
       category: item.conceptLabel,
       amount: this.currencyMx.transform(Number(item.amount), item.currency),
       statusLabel: item.statusLabel,

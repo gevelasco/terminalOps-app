@@ -1,6 +1,7 @@
 import { Equipment, Unit } from '@shared/models/logistics.models';
 import {
   buildManeuverAssignableUnitRows,
+  unitMatchesManeuverAssignment,
   unitMatchesManeuverOperationCode,
 } from './assignable-fleet-for-maneuver';
 
@@ -84,5 +85,109 @@ describe('buildManeuverAssignableUnitRows', () => {
     expect(unitMatchesManeuverOperationCode(sencillo, 'full')).toBe(false);
     expect(unitMatchesManeuverOperationCode(full, 'full')).toBe(true);
     expect(unitMatchesManeuverOperationCode(full, 'sencillo')).toBe(false);
+  });
+
+  it('includes self-contained units without hitched equipment', () => {
+    const volteo = unit({
+      id: 'fre-2021-dsaf',
+      trailerBrandAbbr: 'FRE',
+      trailerYear: '2021',
+      plate: 'DSAF',
+      transportType: 'maroma_volteo',
+    });
+    const rows = buildManeuverAssignableUnitRows([volteo], []);
+    expect(rows.length).toBe(1);
+    expect(rows[0]!.displayLabel).toMatch(/Volteo$/);
+  });
+});
+
+describe('unitMatchesManeuverAssignment', () => {
+  const volteo = unit({
+    id: 'volteo',
+    transportType: 'maroma_volteo',
+  });
+  const rabon = unit({
+    id: 'rabon',
+    transportType: 'rabon_plataforma',
+  });
+  const pipa = unit({
+    id: 'pipa',
+    transportType: 'camion_pipa',
+  });
+  const tractorChasis = unit({
+    id: 'chasis',
+    transportType: 'tractocamion',
+    hitchedEquipment: [
+      equipment({ id: 'e-chasis', unitId: 'chasis', type: 'portacontenedor' }),
+    ],
+  });
+  const tractorPlana = unit({
+    id: 'plana',
+    transportType: 'tractocamion',
+    hitchedEquipment: [
+      equipment({ id: 'e-plana', unitId: 'plana', type: 'plataforma' }),
+    ],
+  });
+  const tractorGondola = unit({
+    id: 'gondola',
+    transportType: 'tractocamion',
+    hitchedEquipment: [
+      equipment({ id: 'e-gondola', unitId: 'gondola', type: 'gondola' }),
+    ],
+  });
+  const chassis20 = unit({
+    id: 'chasis-20',
+    transportType: 'tractocamion',
+    hitchedEquipment: [
+      equipment({
+        id: 'e-20',
+        unitId: 'chasis-20',
+        type: 'portacontenedor',
+        fleetMeta: { equipmentContainerSlotConfig: 'iso_20' },
+      }),
+    ],
+  });
+
+  it('with container N/A shows rabón, volteo and pipa, and hides chassis/plana', () => {
+    const naSencillo = { operationCode: 'sencillo', containerType: 'na' };
+
+    expect(unitMatchesManeuverAssignment(volteo, naSencillo)).toBe(true);
+    expect(unitMatchesManeuverAssignment(rabon, naSencillo)).toBe(true);
+    expect(unitMatchesManeuverAssignment(pipa, naSencillo)).toBe(true);
+    expect(unitMatchesManeuverAssignment(tractorChasis, naSencillo)).toBe(false);
+    expect(unitMatchesManeuverAssignment(tractorPlana, naSencillo)).toBe(false);
+    expect(unitMatchesManeuverAssignment(tractorGondola, naSencillo)).toBe(true);
+  });
+
+  it('with ISO container hides self-contained units and non-container trailers', () => {
+    const iso = { operationCode: 'sencillo', containerType: '40hc' };
+
+    expect(unitMatchesManeuverAssignment(volteo, iso)).toBe(false);
+    expect(unitMatchesManeuverAssignment(rabon, iso)).toBe(false);
+    expect(unitMatchesManeuverAssignment(pipa, iso)).toBe(false);
+    expect(unitMatchesManeuverAssignment(tractorGondola, iso)).toBe(false);
+    expect(unitMatchesManeuverAssignment(tractorChasis, iso)).toBe(true);
+    expect(unitMatchesManeuverAssignment(tractorPlana, iso)).toBe(false);
+    expect(
+      unitMatchesManeuverAssignment(tractorPlana, {
+        operationCode: 'plana',
+        containerType: '40hc',
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects a 20′ chassis for a 45′ container', () => {
+    expect(
+      unitMatchesManeuverAssignment(chassis20, {
+        operationCode: 'sencillo',
+        containerType: '45hc',
+      }),
+    ).toBe(false);
+    expect(
+      unitMatchesManeuverAssignment(chassis20, {
+        operationCode: 'sencillo',
+        containerType: '20dc',
+      }),
+    ).toBe(true);
   });
 });

@@ -14,7 +14,7 @@
   --fleet-overview-cama-baja-scale: 0.62;
   --fleet-overview-tolva-scale: 1.1;
   --fleet-overview-convoy-offset-y: 0.2rem;
-  --fleet-overview-identity-row-code: 1.25rem;
+  --fleet-overview-identity-row-code: 1.5rem;
   --fleet-overview-identity-row-route: 1.1rem;
   --fleet-overview-identity-row-client: 1.35rem;
   --fleet-overview-identity-gap: 0.2rem;
@@ -214,7 +214,6 @@
 
 .fleet-overview__status-pill {
   flex-shrink: 0;
-  align-self: flex-start;
 }
 
 .fleet-overview__code-row {

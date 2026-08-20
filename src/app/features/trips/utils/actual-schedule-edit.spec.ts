@@ -98,7 +98,7 @@ describe('actual-schedule-edit', () => {
     drafts.returnAt = '2026-01-15T05:00';
     const result = validateActualScheduleBeforeSave(trip, drafts, 'Ajuste');
     expect(result).toEqual({
-      error: 'La fecha fin real no puede ser anterior a la llegada con cliente.',
+      error: 'La llegada origen real no puede ser anterior a la cita cliente.',
     });
   });
 });

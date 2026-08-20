@@ -212,6 +212,9 @@ export class AccountPageComponent {
   }
 
   async saveEdit(): Promise<void> {
+    if (this.saving()) {
+      return;
+    }
     const companyId = this.session.companyId();
     if (!companyId) return;
 

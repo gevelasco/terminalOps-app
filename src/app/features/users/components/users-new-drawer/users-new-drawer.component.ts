@@ -28,6 +28,7 @@ import {
   staffModuleGrantsFromDraft,
   type StaffModulePermissionDraftMap,
 } from '@shared/utils/staff-module-permissions';
+import { beginInFlight } from '@shared/utils/in-flight-guard';
 import { UsersModulePermissionsFieldsComponent } from '@features/users/components/users-module-permissions-fields/users-module-permissions-fields.component';
 import { ToButtonComponent } from '@shared/ui/to-button/to-button.component';
 import { ToIconComponent } from '@shared/ui/to-icon/to-icon.component';
@@ -136,6 +137,9 @@ export class UsersNewDrawerComponent {
   }
 
   submit(): void {
+    if (this.saving()) {
+      return;
+    }
     const companyId = this.session.companyId();
     if (!companyId) {
       return;
@@ -156,7 +160,9 @@ export class UsersNewDrawerComponent {
       this.toast.show('Indica el nombre del usuario.', 'warning');
       return;
     }
-    this.saving.set(true);
+    if (!beginInFlight(this.saving)) {
+      return;
+    }
     this.api
       .listUsers(companyId)
       .pipe(takeUntilDestroyed(this.destroyRef))

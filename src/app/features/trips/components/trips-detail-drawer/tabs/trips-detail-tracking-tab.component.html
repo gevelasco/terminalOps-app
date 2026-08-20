@@ -50,48 +50,175 @@
           </div>
         }
 
-        <dl class="maniobra-detail__dl maniobra-detail__dl--schedule">
-          @if (vm.trip().loadDate) {
-            <dt>Fecha de carga</dt>
-            <dd>{{ vm.plannedScheduleDisplay(vm.trip().loadDate) }}</dd>
+        <ol class="maniobra-detail__timeline" aria-label="Seguimiento de la maniobra">
+          <li
+            class="maniobra-detail__timeline-step"
+            [class.maniobra-detail__timeline-step--reached]="vm.timelineStepReached('programmed')"
+            [class.maniobra-detail__timeline-step--current]="vm.timelineStepCurrent('programmed')"
+            [attr.aria-current]="vm.timelineStepCurrent('programmed') ? 'step' : null"
+          >
+            <div class="maniobra-detail__timeline-item">
+              <span class="maniobra-detail__timeline-label">Programada</span>
+              <span class="maniobra-detail__timeline-value">{{ vm.fmt(vm.trip().createdAt) }}</span>
+            </div>
+          </li>
+          @if (vm.trip().loadDate || vm.trip().loadPlace) {
+            <li
+              class="maniobra-detail__timeline-step"
+              [class.maniobra-detail__timeline-step--reached]="vm.timelineStepReached('load')"
+              [class.maniobra-detail__timeline-step--current]="vm.timelineStepCurrent('load')"
+              [attr.aria-current]="vm.timelineStepCurrent('load') ? 'step' : null"
+            >
+              <div
+                class="maniobra-detail__timeline-pair"
+                [class.maniobra-detail__timeline-pair--solo]="
+                  !(vm.trip().loadDate && vm.trip().loadPlace)
+                "
+              >
+                @if (vm.trip().loadDate) {
+                  <div class="maniobra-detail__timeline-item">
+                    <span class="maniobra-detail__timeline-label">Carga</span>
+                    <span class="maniobra-detail__timeline-value">{{
+                      vm.plannedScheduleDisplay(vm.trip().loadDate)
+                    }}</span>
+                  </div>
+                }
+                @if (vm.trip().loadPlace) {
+                  <div class="maniobra-detail__timeline-item">
+                    <span class="maniobra-detail__timeline-label">Lugar de carga</span>
+                    <span class="maniobra-detail__timeline-value">{{ vm.trip().loadPlace }}</span>
+                  </div>
+                }
+              </div>
+            </li>
           }
-          @if (vm.trip().loadPlace) {
-            <dt>Lugar de carga</dt>
-            <dd>{{ vm.trip().loadPlace }}</dd>
+          <li
+            class="maniobra-detail__timeline-step"
+            [class.maniobra-detail__timeline-step--reached]="vm.timelineStepReached('departure')"
+            [class.maniobra-detail__timeline-step--current]="vm.timelineStepCurrent('departure')"
+            [attr.aria-current]="vm.timelineStepCurrent('departure') ? 'step' : null"
+          >
+            <div
+              class="maniobra-detail__timeline-pair"
+              [class.maniobra-detail__timeline-pair--solo]="!vm.showRealScheduleField('departureAt')"
+            >
+              <div class="maniobra-detail__timeline-item">
+                <span class="maniobra-detail__timeline-label">Salida</span>
+                <span class="maniobra-detail__timeline-value">{{
+                  vm.plannedScheduleDisplay(vm.trip().plannedDepartureAt)
+                }}</span>
+              </div>
+              @if (vm.showRealScheduleField('departureAt')) {
+                <div class="maniobra-detail__timeline-item maniobra-detail__timeline-item--update">
+                  <span class="maniobra-detail__timeline-label">Actualización en salida</span>
+                  <span class="maniobra-detail__timeline-value">{{
+                    vm.plannedScheduleDisplay(vm.actualScheduleIso('departureAt'))
+                  }}</span>
+                </div>
+              }
+            </div>
+          </li>
+          <li
+            class="maniobra-detail__timeline-step"
+            [class.maniobra-detail__timeline-step--reached]="vm.timelineStepReached('arrival')"
+            [class.maniobra-detail__timeline-step--current]="vm.timelineStepCurrent('arrival')"
+            [attr.aria-current]="vm.timelineStepCurrent('arrival') ? 'step' : null"
+          >
+            <div
+              class="maniobra-detail__timeline-pair"
+              [class.maniobra-detail__timeline-pair--solo]="!vm.showRealScheduleField('arrivedAt')"
+            >
+              <div class="maniobra-detail__timeline-item">
+                <span class="maniobra-detail__timeline-label">Cita cliente</span>
+                <span class="maniobra-detail__timeline-value">{{
+                  vm.plannedScheduleDisplay(vm.trip().plannedArrivalAt)
+                }}</span>
+              </div>
+              @if (vm.showRealScheduleField('arrivedAt')) {
+                <div class="maniobra-detail__timeline-item maniobra-detail__timeline-item--update">
+                  <span class="maniobra-detail__timeline-label">Actualización en cita</span>
+                  <span class="maniobra-detail__timeline-value">{{
+                    vm.plannedScheduleDisplay(vm.actualScheduleIso('arrivedAt'))
+                  }}</span>
+                </div>
+              }
+            </div>
+          </li>
+          <li
+            class="maniobra-detail__timeline-step"
+            [class.maniobra-detail__timeline-step--reached]="vm.timelineStepReached('completion')"
+            [class.maniobra-detail__timeline-step--current]="vm.timelineStepCurrent('completion')"
+            [attr.aria-current]="vm.timelineStepCurrent('completion') ? 'step' : null"
+          >
+            <div
+              class="maniobra-detail__timeline-pair"
+              [class.maniobra-detail__timeline-pair--solo]="!vm.showRealScheduleField('returnAt')"
+            >
+              <div class="maniobra-detail__timeline-item">
+                <span class="maniobra-detail__timeline-label">Llegada origen</span>
+                <span class="maniobra-detail__timeline-value">{{
+                  vm.plannedScheduleDisplay(vm.trip().plannedCompletionAt)
+                }}</span>
+              </div>
+              @if (vm.showRealScheduleField('returnAt')) {
+                <div class="maniobra-detail__timeline-item maniobra-detail__timeline-item--update">
+                  <span class="maniobra-detail__timeline-label">Actualización en origen</span>
+                  <span class="maniobra-detail__timeline-value">{{
+                    vm.plannedScheduleDisplay(vm.actualScheduleIso('returnAt'))
+                  }}</span>
+                </div>
+              }
+            </div>
+          </li>
+          @if (vm.showEmptyDeliveryTimelineStep()) {
+            <li
+              class="maniobra-detail__timeline-step"
+              [class.maniobra-detail__timeline-step--reached]="vm.timelineStepReached('empty_delivery')"
+              [class.maniobra-detail__timeline-step--current]="vm.timelineStepCurrent('empty_delivery')"
+              [attr.aria-current]="vm.timelineStepCurrent('empty_delivery') ? 'step' : null"
+            >
+              <div
+                class="maniobra-detail__timeline-pair"
+                [class.maniobra-detail__timeline-pair--solo]="
+                  !vm.emptyDeliveryUpdateAt() && !vm.emptyDeliveryTimelinePlace()
+                "
+              >
+                <div class="maniobra-detail__timeline-item">
+                  <span class="maniobra-detail__timeline-label">Entrega de vacío</span>
+                  <span class="maniobra-detail__timeline-value">{{
+                    vm.plannedScheduleDisplay(vm.emptyDeliveryPrimaryAt())
+                  }}</span>
+                </div>
+                @if (vm.emptyDeliveryTimelinePlace() || vm.emptyDeliveryUpdateAt()) {
+                  <div class="maniobra-detail__timeline-side">
+                    @if (vm.emptyDeliveryTimelinePlace()) {
+                      <div class="maniobra-detail__timeline-item">
+                        <span class="maniobra-detail__timeline-label">Lugar de entrega</span>
+                        <span class="maniobra-detail__timeline-value">{{
+                          vm.emptyDeliveryTimelinePlace()
+                        }}</span>
+                      </div>
+                    }
+                    @if (vm.emptyDeliveryUpdateAt(); as updateAt) {
+                      <div class="maniobra-detail__timeline-item maniobra-detail__timeline-item--update">
+                        <span class="maniobra-detail__timeline-label">Actualización en entrega</span>
+                        <span class="maniobra-detail__timeline-value">{{
+                          vm.plannedScheduleDisplay(updateAt)
+                        }}</span>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            </li>
           }
-          <dt>Registrada</dt>
-          <dd>{{ vm.fmt(vm.trip().createdAt) }}</dd>
-          <dt>Salida planeada</dt>
-          <dd>{{ vm.plannedScheduleDisplay(vm.trip().plannedDepartureAt) }}</dd>
-          @if (vm.showRealScheduleField('departureAt')) {
-            <dt class="maniobra-detail__schedule-real-label">Salida real</dt>
-            <dd class="maniobra-detail__schedule-real-value">{{
-              vm.plannedScheduleDisplay(vm.trip().departureAt)
-            }}</dd>
-          }
-          <dt>Llegada cliente planeada</dt>
-          <dd>{{ vm.plannedScheduleDisplay(vm.trip().plannedArrivalAt) }}</dd>
-          @if (vm.showRealScheduleField('arrivedAt')) {
-            <dt class="maniobra-detail__schedule-real-label">Llegada cliente real</dt>
-            <dd class="maniobra-detail__schedule-real-value">{{
-              vm.plannedScheduleDisplay(vm.trip().arrivedAt)
-            }}</dd>
-          }
-          <dt>Fin planeado</dt>
-          <dd>{{ vm.plannedScheduleDisplay(vm.trip().plannedCompletionAt) }}</dd>
-          @if (vm.showRealScheduleField('returnAt')) {
-            <dt class="maniobra-detail__schedule-real-label">Fin real</dt>
-            <dd class="maniobra-detail__schedule-real-value">{{
-              vm.plannedScheduleDisplay(vm.trip().returnAt)
-            }}</dd>
-          }
-        </dl>
+        </ol>
 
         @if (vm.editingPlannedDates() && vm.realDatesEditEnabled()) {
           <div class="maniobra-detail__empty-delivery-form">
             <div class="maniobra-drawer__grid2">
               <to-input
-                label="Fecha de carga"
+                label="Carga"
                 type="datetime-local"
                 [value]="vm.loadDateDraft()"
                 (valueChange)="vm.loadDateDraft.set($event)"
@@ -104,20 +231,20 @@
                 [(brandName)]="vm.loadPlaceDraft"
               />
               <to-input
-                label="Salida planeada"
+                label="Salida"
                 type="datetime-local"
                 [value]="vm.realDepartureDraft()"
                 (valueChange)="vm.realDepartureDraft.set($event)"
               />
               <to-input
-                label="Llegada cliente planeada"
+                label="Cita cliente"
                 type="datetime-local"
                 [min]="vm.realDepartureDraft() || undefined"
                 [value]="vm.realArrivalDraft()"
                 (valueChange)="vm.realArrivalDraft.set($event)"
               />
               <to-input
-                label="Fin planeado"
+                label="Llegada origen"
                 type="datetime-local"
                 [min]="vm.realArrivalDraft() || undefined"
                 [value]="vm.realCompletionDraft()"
@@ -130,7 +257,7 @@
         @if (vm.canEditRealScheduleField('departureAt')) {
           <div class="maniobra-detail__schedule-input">
             <to-input
-              label="Salida real"
+              label="Actualización en salida"
               type="datetime-local"
               [value]="vm.realDepartureDraft()"
               (valueChange)="vm.realDepartureDraft.set($event)"
@@ -140,7 +267,7 @@
         @if (vm.canEditRealScheduleField('arrivedAt')) {
           <div class="maniobra-detail__schedule-input">
             <to-input
-              label="Llegada cliente real"
+              label="Actualización en cita"
               type="datetime-local"
               [value]="vm.realArrivalDraft()"
               (valueChange)="vm.realArrivalDraft.set($event)"
@@ -150,7 +277,7 @@
         @if (vm.canEditRealScheduleField('returnAt')) {
           <div class="maniobra-detail__schedule-input">
             <to-input
-              label="Fin real"
+              label="Actualización en origen"
               type="datetime-local"
               [min]="vm.realCompletionMinLocal()"
               [value]="vm.realCompletionDraft()"
@@ -214,13 +341,6 @@
           </div>
         }
 
-        @if (
-          !vm.realDatesEditEnabled() &&
-          (vm.hasEmptyDelivery() || vm.canRegisterEmptyDelivery())
-        ) {
-          <hr class="maniobra-detail__schedule-divider" aria-hidden="true" />
-        }
-
         @if (!vm.realDatesEditEnabled() && vm.canRegisterEmptyDelivery()) {
           <div
             class="maniobra-detail__schedule-edit-toggle"
@@ -252,12 +372,6 @@
           vm.hasEmptyDelivery() &&
           !vm.emptyDeliveryFormOpen()
         ) {
-          <dl class="maniobra-detail__dl maniobra-detail__dl--schedule">
-            <dt>Entrega de vacío</dt>
-            <dd>{{ vm.plannedScheduleDisplay(vm.trip().emptyDeliveryAt) }}</dd>
-            <dt>Lugar de entrega</dt>
-            <dd>{{ vm.trip().emptyDeliveryPlace || '—' }}</dd>
-          </dl>
           <div class="fleet-unit-docs">
             <div class="fleet-unit-docs__head">
               <h4 class="fleet-unit-sec__subtitle">Documentos de entrega de vacío</h4>
@@ -581,46 +695,51 @@
                 [disabled]="vm.bitacoraSaving()"
                 (change)="vm.onBitacoraImagesSelected($event)"
               />
-              <label
-                class="maniobra-detail__bitacora-camera"
-                for="maniobra-bitacora-images"
-                [attr.aria-disabled]="vm.bitacoraSaving() ? 'true' : null"
-                title="Adjuntar imágenes"
-              >
-                <to-icon name="camera" [size]="16" />
-                <span>Imagen</span>
-              </label>
-              @if (vm.canMarkTripIncident()) {
+              <div class="maniobra-detail__bitacora-composer-actions">
                 <label
-                  class="maniobra-detail__bitacora-incident-check"
-                  [class.maniobra-detail__bitacora-incident-check--on]="
-                    vm.markAsIncidentDraft()
-                  "
+                  class="maniobra-detail__bitacora-camera"
+                  for="maniobra-bitacora-images"
+                  [attr.aria-disabled]="vm.bitacoraSaving() ? 'true' : null"
+                  title="Adjuntar imágenes"
                 >
-                  <input
-                    type="checkbox"
-                    [checked]="vm.markAsIncidentDraft()"
-                    (change)="vm.onMarkAsIncidentDraftChange($event)"
-                    [disabled]="vm.bitacoraSaving()"
-                  />
-                  <to-icon
-                    class="maniobra-detail__bitacora-incident-check-icon"
-                    name="warning"
-                    [size]="14"
-                  />
-                  <span>Marcar como incidente</span>
+                  <to-icon name="camera" [size]="16" />
+                  <span>Imagen</span>
                 </label>
-              }
+                @if (vm.canMarkTripIncident()) {
+                  <label
+                    class="maniobra-detail__bitacora-incident-check"
+                    [class.maniobra-detail__bitacora-incident-check--on]="
+                      vm.markAsIncidentDraft()
+                    "
+                  >
+                    <input
+                      type="checkbox"
+                      [checked]="vm.markAsIncidentDraft()"
+                      (change)="vm.onMarkAsIncidentDraftChange($event)"
+                      [disabled]="vm.bitacoraSaving()"
+                    />
+                    <to-icon
+                      class="maniobra-detail__bitacora-incident-check-icon"
+                      name="warning"
+                      [size]="14"
+                    />
+                    <span>Marcar como incidente</span>
+                  </label>
+                }
+              </div>
+              <to-button
+                class="maniobra-detail__bitacora-composer-submit"
+                type="button"
+                variant="primary"
+                size="sm"
+                [loading]="vm.bitacoraSaving()"
+                [disabled]="vm.bitacoraSaving()"
+                (click)="vm.registerBitacoraEntry()"
+              >
+                <to-icon name="updates" [size]="16" />
+                Agregar a bitácora
+              </to-button>
             </div>
-            <to-button
-              type="button"
-              variant="primary"
-              [disabled]="vm.bitacoraSaving()"
-              (click)="vm.registerBitacoraEntry()"
-            >
-              <to-icon name="updates" [size]="16" />
-              Agregar a bitácora
-            </to-button>
           }
         </div>
       </section>

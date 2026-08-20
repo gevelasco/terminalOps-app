@@ -87,22 +87,9 @@ export class UsersPageComponent {
   openNewUser(): void {
     const rows = this.users.value() ?? [];
     const staffCount = rows.filter((u) => u.role === 'staff').length;
-    const adminCount = rows.filter((u) => u.role === 'admin').length;
-    // Alta por defecto es staff; si ambos cupos están llenos, bloquear.
-    const canStaff = this.planEntitlements.canAddStaff(staffCount);
-    const canAdmin = this.planEntitlements.canAddAdmin(adminCount);
-    if (!canStaff && !canAdmin) {
-      this.toast.show(
-        `${this.planEntitlements.staffLimitMessage()} ${this.planEntitlements.adminLimitMessage()}`,
-        'warning',
-      );
+    if (!this.planEntitlements.canAddStaff(staffCount)) {
+      this.toast.show(this.planEntitlements.staffLimitMessage(), 'warning');
       return;
-    }
-    if (!canStaff) {
-      this.toast.show(
-        `${this.planEntitlements.staffLimitMessage()} Puedes crear un administrador si tu plan lo permite.`,
-        'warning',
-      );
     }
     this.newUserOpen.set(true);
   }

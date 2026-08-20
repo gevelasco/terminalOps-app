@@ -261,6 +261,9 @@ export class ProfileDrawerComponent {
   }
 
   savePersonalSection(): void {
+    if (this.saving()) {
+      return;
+    }
     const displayName = this.displayName().trim();
     const username = this.username().trim().toLowerCase();
     const jobTitle = this.jobTitle().trim();
@@ -304,6 +307,9 @@ export class ProfileDrawerComponent {
   }
 
   savePasswordSection(): void {
+    if (this.saving()) {
+      return;
+    }
     const current = this.currentPassword().trim();
     const next = this.newPassword().trim();
     const confirm = this.confirmPassword().trim();

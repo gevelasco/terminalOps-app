@@ -25,7 +25,7 @@ export function buildManiobrasCsv(rows: readonly ManiobraListExportRow[]): strin
     'Unidad',
     'Estado',
     'Salida',
-    'Llegada',
+    'Cita cliente',
     'Configuración',
     'Incidente',
   ];

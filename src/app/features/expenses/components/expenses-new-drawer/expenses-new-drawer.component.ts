@@ -64,6 +64,7 @@ import {
   expenseIncurredDateInput,
 } from '@features/expenses/utils/expenses-form.util';
 import { formatMoneyInputValue } from '@shared/utils/format-grouped-number';
+import { beginInFlight } from '@shared/utils/in-flight-guard';
 
 @Component({
   selector: 'app-expenses-new-drawer',
@@ -95,6 +96,7 @@ export class ExpensesNewDrawerComponent {
   /** Si se define, el drawer opera en modo edición. */
   readonly editingExpense = input<Expense | null>(null);
   readonly isEditing = computed(() => this.editingExpense() != null);
+  readonly saving = signal(false);
 
   readonly rubroOptions = EXPENSE_RUBRO_OPTIONS;
   readonly verificationScopeOptions = EXPENSE_VERIFICATION_SCOPE_OPTIONS;
@@ -232,6 +234,9 @@ export class ExpensesNewDrawerComponent {
   }
 
   submit(): void {
+    if (this.saving()) {
+      return;
+    }
     const categoryText = this.category().trim();
     if (!categoryText) {
       this.toast.show('Indica el concepto del gasto.', 'warning');
@@ -297,6 +302,10 @@ export class ExpensesNewDrawerComponent {
     const keptDocs = this.documents();
     const originalDocs = this.originalDocuments;
 
+    if (!beginInFlight(this.saving)) {
+      return;
+    }
+
     let request$: Observable<Expense>;
     if (editing) {
       request$ = this.syncExpenseDocuments(
@@ -332,6 +341,7 @@ export class ExpensesNewDrawerComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (row) => {
+          this.saving.set(false);
           this.toast.show(
             editing
               ? 'Gasto actualizado.'
@@ -344,6 +354,7 @@ export class ExpensesNewDrawerComponent {
           this.dismiss.emit();
         },
         error: (err: unknown) => {
+          this.saving.set(false);
           const docsFailed =
             typeof err === 'object' &&
             err !== null &&

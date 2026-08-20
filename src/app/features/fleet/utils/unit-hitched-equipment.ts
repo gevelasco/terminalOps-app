@@ -25,6 +25,17 @@ export function isPlanaEquipment(e: Equipment): boolean {
   return v === 'plataforma' || v.includes('plana') || v.includes('flatbed');
 }
 
+/** Chasis / portacontenedor ISO (no plataforma plana). */
+export function isPortacontenedorEquipment(e: Equipment): boolean {
+  const v = equipmentOperationValue(e);
+  return (
+    v === 'portacontenedor' ||
+    v.includes('portacontenedor') ||
+    v.includes('chasis') ||
+    v.includes('chassis')
+  );
+}
+
 export function isCajaSecaEquipment(e: Equipment): boolean {
   const v = equipmentOperationValue(e);
   return (

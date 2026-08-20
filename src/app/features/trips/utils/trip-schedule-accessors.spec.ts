@@ -48,12 +48,46 @@ describe('trip-schedule-accessors', () => {
       status: 'completed',
       departureAt: pollutedPair,
       arrivedAt: pollutedPair,
-      returnAt: '2026-06-21T07:12:00.000Z',
+      returnAt: '2026-07-09T07:12:00.000Z',
       ...planned,
     };
 
     expect(tripDepartureIso(trip)).toBe(planned.plannedDepartureAt);
     expect(tripArrivalIso(trip)).toBe(planned.plannedArrivalAt);
     expect(tripCompletionIso(trip)).toBe(trip.returnAt);
+  });
+
+  it('ignores paired spurious departure and completion while keeping a distinct arrival', () => {
+    const liveClock = '2026-08-19T19:57:00.000Z';
+    const trip = {
+      status: 'in_transit',
+      createdAt: '2026-08-19T03:20:00.000Z',
+      departureAt: liveClock,
+      arrivedAt: '2026-08-19T17:23:00.000Z',
+      returnAt: liveClock,
+      plannedDepartureAt: '2026-08-19T03:20:00.000Z',
+      plannedArrivalAt: '2026-08-19T15:23:00.000Z',
+      plannedCompletionAt: '2026-08-20T03:20:00.000Z',
+    };
+
+    expect(tripDepartureIso(trip)).toBe(trip.plannedDepartureAt);
+    expect(tripArrivalIso(trip)).toBe(trip.arrivedAt);
+    expect(tripCompletionIso(trip)).toBe(trip.plannedCompletionAt);
+  });
+
+  it('ignores actual departure that is after actual arrival', () => {
+    const trip = {
+      status: 'in_transit',
+      departureAt: '2026-08-19T19:57:00.000Z',
+      arrivedAt: '2026-08-19T17:23:00.000Z',
+      returnAt: null,
+      plannedDepartureAt: '2026-08-19T03:20:00.000Z',
+      plannedArrivalAt: '2026-08-19T15:23:00.000Z',
+      plannedCompletionAt: '2026-08-20T03:20:00.000Z',
+    };
+
+    expect(tripDepartureIso(trip)).toBe(trip.plannedDepartureAt);
+    expect(tripArrivalIso(trip)).toBe(trip.arrivedAt);
+    expect(tripCompletionIso(trip)).toBe(trip.plannedCompletionAt);
   });
 });

@@ -5,6 +5,7 @@ import type {
   ExpenseMaintenanceTarget,
   ExpenseVerificationScope,
 } from '@shared/models/logistics.models';
+import { expenseRubroLabelForExpense } from '@features/expenses/utils/expense-rubro.util';
 
 const PROJECTED_ENTRY_ID_PREFIXES = [
   'trip:',
@@ -80,4 +81,16 @@ export function expenseFromProjectedCalendarItem(item: ExpenseCalendarItem): Exp
       ? { verificationScope: projected.verificationScope as ExpenseVerificationScope }
       : {}),
   };
+}
+
+/** Rubro para la tabla del calendario: misma regla que el drawer, no el label crudo de API. */
+export function calendarItemRubroLabel(item: ExpenseCalendarItem): string {
+  if (item.expense) {
+    return expenseRubroLabelForExpense(item.expense);
+  }
+  const projected = expenseFromProjectedCalendarItem(item);
+  if (projected) {
+    return expenseRubroLabelForExpense(projected);
+  }
+  return item.rubroLabel?.trim() || '—';
 }

@@ -56,6 +56,7 @@ function baseSnap(
     selectedOperationConfigId: 'cfg-1',
     selectedOperationConfigName: 'Full',
     usesMultipleEquipment: false,
+    unitRequiresHitchedEquipment: true,
     equipmentPrimaryId: 'eq-1',
     equipmentSecondaryId: '',
     equipmentPrimaryLabel: 'Caja 01',
@@ -149,5 +150,22 @@ describe('trips-new-drawer-submit.util', () => {
     if (!res.ok) {
       expect(res.message).toContain('Full doble');
     }
+  });
+
+  it('allows empty equipment for self-contained units', () => {
+    const res = buildTripsNewDrawerSubmitResult(
+      baseSnap({
+        unitRequiresHitchedEquipment: false,
+        equipmentPrimaryId: '',
+        equipmentPrimaryLabel: '',
+        containerType: 'na',
+      }),
+      Date.parse('2026-07-01T00:00:00.000Z'),
+    );
+    expect(res.ok).toBe(true);
+    if (!res.ok) {
+      return;
+    }
+    expect(res.payload.equipmentIds).toEqual([]);
   });
 });

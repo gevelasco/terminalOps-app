@@ -231,7 +231,8 @@ const KIND_DEFAULT_RUBRO = new Map<ExpenseKind, ExpenseRubro>([
   ['trailer_admin_payout', 'administracion'],
   ['operational_control', 'administracion'],
   ['service', 'servicio'],
-  ['other', 'otro'],
+  // `other` se resuelve en expenseRubroFromExpense: Gasto salvo concepto «Otro».
+  ['other', 'gasto'],
 ]);
 
 export function expenseRubroLabel(rubro: ExpenseRubro): string {
@@ -276,6 +277,11 @@ export function defaultKindForRubro(rubro: ExpenseRubro): ExpenseKind {
   }
 }
 
+function isOtroConceptCategory(category: string): boolean {
+  const normalized = category.trim().toLowerCase();
+  return normalized === 'otro' || normalized === 'other';
+}
+
 export function expenseRubroFromExpense(e: Expense): ExpenseRubro {
   const tripLinked = Boolean(e.tripId?.trim());
   if (tripLinked && MANIOBRA_KINDS.has(e.kind)) {
@@ -283,6 +289,11 @@ export function expenseRubroFromExpense(e: Expense): ExpenseRubro {
   }
   if (e.kind === 'operator_payment' || e.kind === 'operator_commission') {
     return 'maniobra';
+  }
+  // Rubro Gasto y rubro Otro comparten kind `other`. El concepto «Otro» es el
+  // único que debe verse como rubro Otro; el resto (gasto general) es Gasto.
+  if (e.kind === 'other') {
+    return isOtroConceptCategory(e.category) ? 'otro' : 'gasto';
   }
   return KIND_DEFAULT_RUBRO.get(e.kind) ?? 'gasto';
 }

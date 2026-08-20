@@ -175,6 +175,9 @@ export class DestinationRatesDetailDrawerFacade {
   }
 
   persist(): void {
+    if (this.saving()) {
+      return;
+    }
     const err = validateDestinationRateForm({
       originOperationalCenterId: this.originOperationalCenterId(),
       postalCode: this.postalCode(),
@@ -224,6 +227,9 @@ export class DestinationRatesDetailDrawerFacade {
   }
 
   remove(): void {
+    if (this.saving()) {
+      return;
+    }
     const id = this.rate().id;
     this.saving.set(true);
     this.ratesFeature

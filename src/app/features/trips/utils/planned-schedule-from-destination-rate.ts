@@ -38,7 +38,7 @@ export function dateToDateTimeLocalValue(date: Date): string {
 }
 
 /**
- * Sugiere llegada cliente y fin a partir de salida + tiempos referenciales de tarifa.
+ * Sugiere cita cliente y llegada origen a partir de salida + tiempos referenciales de tarifa.
  * Solo UX — no operativo.
  */
 export function computePlannedScheduleSuggestionFromRate(

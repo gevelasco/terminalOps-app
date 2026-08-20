@@ -364,7 +364,7 @@ export function overviewTripDepartureLine(trip: NonNullable<FleetOverviewItemDto
   return overviewEffectiveDateTimeLine(tripDepartureIso(trip));
 }
 
-/** Entrega: real si existe; si no, plan operativo. */
+/** Cita cliente: real si existe; si no, plan operativo. */
 export function overviewTripArrivalLine(trip: NonNullable<FleetOverviewItemDto['trip']>): string {
   return overviewEffectiveDateTimeLine(tripArrivalIso(trip));
 }

@@ -42,7 +42,7 @@ function resolveTripScheduleWindow(
   return null;
 }
 
-/** Avance lineal por horas entre Salida y Llegada fin. */
+/** Avance lineal por horas entre Salida y Llegada origen. */
 function maneuverProgressRatioByHours(
   startMs: number,
   endMs: number,
@@ -88,7 +88,7 @@ export function overviewTripEtaKmLabel(trip: FleetOverviewTripDto): string {
   return `~${formatRouteKmEsMx(total)} km`;
 }
 
-/** Campo «Llegada fin»: real si existe; si no, plan operativo. */
+/** Campo «Llegada origen»: real si existe; si no, plan operativo. */
 export function overviewTripCompletionLine(trip: FleetOverviewTripDto): string {
   const iso = tripCompletionIso(trip);
   if (!iso?.trim()) {
@@ -110,7 +110,7 @@ export function overviewTripCompletionLine(trip: FleetOverviewTripDto): string {
   return `${date} · ${time}`;
 }
 
-/** Avance temporal: salida real→plan, fin real→plan. */
+/** Avance temporal: salida real→plan, llegada origen real→plan. */
 export function overviewTripProgress(
   trip: FleetOverviewTripDto,
 ): FleetOverviewTripProgress {

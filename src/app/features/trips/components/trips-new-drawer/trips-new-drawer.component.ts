@@ -16,8 +16,9 @@ import { FormsModule } from '@angular/forms';
 import {
   formatManeuverEquipmentLabel,
   unitHitchedEquipment,
-  unitMatchesManeuverOperationCode,
+  unitMatchesManeuverAssignment,
 } from '@features/trips/utils/assignable-fleet-for-maneuver';
+import { unitCanHitchEquipment } from '@shared/utils/fleet/equipment-hitch-assignment';
 import {
   fleetComplianceIconsForEquipment,
   fleetComplianceIconsForUnit,
@@ -49,6 +50,7 @@ import {
   normalizeMxPostalCodeDigits,
 } from '@features/trips/utils/mx-postal-settlement';
 import { formatRouteKmEsMx } from '@features/trips/utils/maniobra-route-display';
+import { tripOperationalKm } from '@features/trips/utils/trip-operational-km';
 import { operatorLicenseExpiresLabelFromIso } from '@features/trips/utils/operator-license-display';
 import { TripsFormCatalogService } from '@features/trips/services/trips-form-catalog.service';
 import { TripLoadPlacesFeatureService } from '@features/trips/services/trip-load-places.service';
@@ -82,6 +84,7 @@ import {
   Unit,
 } from '@shared/models/logistics.models';
 import { isFleetResourceActive } from '@shared/utils/fleet-resource-active';
+import { resourceIdsEqual } from '@shared/utils/resource-id';
 import { TripsService as TripsApiService } from '@core/services/api/trips';
 import { DestinationRatesService as DestinationRatesApiService } from '@core/services/api/destination-rates';
 import { TripsFeatureService } from '@features/trips/services/trips.service';
@@ -299,11 +302,6 @@ export class TripsNewDrawerComponent {
 
   private readonly originPrefillApplied = signal(false);
   private lastHandledOriginCenterId = '';
-  /** CP y localidad de origen bloqueados mientras el origen viene del centro operativo. */
-  readonly originRouteFieldsLocked = computed(() => {
-    const id = this.originOperationalCenterId().trim();
-    return id !== '' && !isOperationalCenterNewRoute(id);
-  });
   private readonly destinationPrefillForClientId = signal('');
   private readonly originLocalityPending = signal<string | null>(null);
   private readonly destinationLocalityPending = signal<string | null>(null);
@@ -328,8 +326,10 @@ export class TripsNewDrawerComponent {
       .filter(
         (u) =>
           isFleetResourceActive(u) &&
-          unitHitchedEquipment(u).length > 0 &&
-          unitMatchesManeuverOperationCode(u, this.operationType()),
+          unitMatchesManeuverAssignment(u, {
+            operationCode: this.operationType(),
+            containerType: this.containerType(),
+          }),
       ),
   );
 
@@ -338,11 +338,14 @@ export class TripsNewDrawerComponent {
     if (!uid) {
       return true;
     }
-    const unit = this.catalog.units().find((u) => u.id === uid);
+    const unit = this.catalog.units().find((u) => resourceIdsEqual(u.id, uid));
     if (!unit) {
-      return false;
+      return this.catalog.units().length === 0;
     }
-    return unitMatchesManeuverOperationCode(unit, this.operationType());
+    return unitMatchesManeuverAssignment(unit, {
+      operationCode: this.operationType(),
+      containerType: this.containerType(),
+    });
   });
   readonly pickerOperators = computed((): Operator[] =>
     this.catalog.operators().filter((o) => isFleetResourceActive(o)),
@@ -353,7 +356,7 @@ export class TripsNewDrawerComponent {
     if (!id) {
       return [];
     }
-    const unit = this.catalog.units().find((u) => u.id === id);
+    const unit = this.catalog.units().find((u) => resourceIdsEqual(u.id, id));
     // El listado de unidades ya trae los equipos enganchados embebidos.
     return unit ? unitHitchedEquipment(unit) : [];
   });
@@ -373,7 +376,12 @@ export class TripsNewDrawerComponent {
     if (!id) {
       return undefined;
     }
-    return this.catalog.units().find((u) => u.id === id);
+    return this.catalog.units().find((u) => resourceIdsEqual(u.id, id));
+  });
+
+  readonly selectedUnitRequiresHitchedEquipment = computed(() => {
+    const unit = this.selectedUnit();
+    return unit ? unitCanHitchEquipment(unit) : true;
   });
 
   readonly selectedUnitComplianceIcons = computed(() => {
@@ -428,8 +436,6 @@ export class TripsNewDrawerComponent {
 
   /** Distancia por carretera (OSRM), solo ida. */
   readonly routeKm = signal<number | null>(null);
-  /** Km operativos (ida + vuelta) desde API fuel-estimate; no calcular ×2 en cliente. */
-  readonly operationalDistanceKmFromApi = signal<number | null>(null);
   readonly routeLoading = signal(false);
   /** Solo fallo de OSRM (ruta), no de Photon. */
   readonly routeFailed = signal(false);
@@ -610,24 +616,23 @@ export class TripsNewDrawerComponent {
     return '';
   });
 
-  /** Distancia operativa (ida + vuelta) — valor del backend cuando diesel automático activo. */
+  /** Distancia total (ida + regreso = ruta × 2). */
   readonly operationalDistanceDisplayValue = computed(() => {
     if (this.routeLoading()) {
       return 'Calculando…';
     }
-    if (this.dieselControlEnabled() && this.dieselEstimateLoading()) {
-      return 'Calculando…';
+    const km = this.routeKm();
+    if (km !== null && Number.isFinite(km) && km > 0) {
+      return `${formatRouteKmEsMx(tripOperationalKm({ routeDistanceKm: km }))} km`;
     }
-    if (!this.dieselControlEnabled()) {
-      return '';
+    if (this.routeFailed() && this.originCoords() && this.destinationCoords()) {
+      return 'No disponible (ruta)';
     }
-    const op = this.operationalDistanceKmFromApi();
-    if (op != null && Number.isFinite(op) && op > 0) {
-      return `${formatRouteKmEsMx(op)} km`;
-    }
-    const oneWay = this.routeKm();
-    if (oneWay != null && Number.isFinite(oneWay) && oneWay > 0) {
-      return 'Pendiente (estimación operativa)';
+    if (
+      this.routePairReady() &&
+      (this.originGeocodeFailed() || this.destinationGeocodeFailed())
+    ) {
+      return 'No disponible (ubicación)';
     }
     return '';
   });
@@ -826,15 +831,9 @@ export class TripsNewDrawerComponent {
           finalize(() => this.dieselEstimateLoading.set(false)),
         );
       }),
-      tap((res) => {
+        tap((res) => {
         if (!res) {
           return;
-        }
-        if (
-          res.operationalDistanceKm != null &&
-          Number.isFinite(res.operationalDistanceKm)
-        ) {
-          this.operationalDistanceKmFromApi.set(res.operationalDistanceKm);
         }
         if (!this.dieselEstimateOverride()) {
           this.applyDieselEstimate(res);
@@ -857,6 +856,7 @@ export class TripsNewDrawerComponent {
 
     effect(() => {
       this.operationType();
+      this.containerType();
       const unitId = this.unitId().trim();
       if (!unitId || this.selectedUnitMatchesManeuverConfiguration()) {
         return;
@@ -1109,7 +1109,6 @@ export class TripsNewDrawerComponent {
         tap(([o, d]) => {
           if (!isValidLatLon(o) || !isValidLatLon(d)) {
             this.routeKm.set(null);
-            this.operationalDistanceKmFromApi.set(null);
             this.routeLoading.set(false);
           }
         }),
@@ -1286,7 +1285,31 @@ export class TripsNewDrawerComponent {
             return EMPTY;
           }
           if (this.shouldSkipExternalNormalization('origin', cpDigits)) {
-            return EMPTY;
+            this.originCpLoading.set(true);
+            return this.sepomex.lookupByPostalCode(cpDigits).pipe(
+              tap((rows) => {
+                if (rows.length === 0) {
+                  return;
+                }
+                const previousKey = this.originLocalityKey();
+                const previousName = this.originSettlements().find(
+                  (r) => localityKey(r) === previousKey,
+                )?.settlement;
+                this.originSettlements.set(rows);
+                this.applyPendingLocalityAfterSepomex('origin', rows, previousName);
+                const nextKey = this.originLocalityKey();
+                if (nextKey && nextKey !== previousKey) {
+                  this.originCompletePrefillFingerprint.set(
+                    routeEndpointFingerprint(
+                      cpDigits,
+                      nextKey,
+                      this.originCoords(),
+                    ),
+                  );
+                }
+              }),
+              finalize(() => this.originCpLoading.set(false)),
+            );
           }
           this.originCompletePrefillFingerprint.set(null);
           this.originCpLoading.set(true);
@@ -1430,42 +1453,58 @@ export class TripsNewDrawerComponent {
   private applyPendingLocalityAfterSepomex(
     side: 'origin' | 'destination',
     rows: MxPostalSettlement[],
+    currentSettlementName?: string,
   ): void {
     const pending =
       side === 'origin'
         ? this.originLocalityPending()
         : this.destinationLocalityPending();
+    const currentKey =
+      side === 'origin'
+        ? this.originLocalityKey().trim()
+        : this.destinationLocalityKey().trim();
+    const resolved = this.resolveLocalityKeyAfterSepomex(
+      rows,
+      pending,
+      currentKey,
+      currentSettlementName,
+    );
+
+    if (side === 'origin') {
+      this.originLocalityKey.set(resolved);
+      this.originLocalityPending.set(null);
+    } else {
+      this.destinationLocalityKey.set(resolved);
+      this.destinationLocalityPending.set(null);
+    }
+  }
+
+  private resolveLocalityKeyAfterSepomex(
+    rows: MxPostalSettlement[],
+    pending: string | null,
+    currentKey: string,
+    currentSettlementName?: string,
+  ): string {
     if (pending && rows.some((r) => localityKey(r) === pending)) {
-      if (side === 'origin') {
-        this.originLocalityKey.set(pending);
-        this.originLocalityPending.set(null);
-      } else {
-        this.destinationLocalityKey.set(pending);
-        this.destinationLocalityPending.set(null);
-      }
-      return;
+      return pending;
     }
     if (pending) {
       const consMatch = rows.find((r) => r.settlementConsId === pending);
       if (consMatch) {
-        const key = localityKey(consMatch);
-        if (side === 'origin') {
-          this.originLocalityKey.set(key);
-          this.originLocalityPending.set(null);
-        } else {
-          this.destinationLocalityKey.set(key);
-          this.destinationLocalityPending.set(null);
-        }
-        return;
+        return localityKey(consMatch);
       }
     }
-    if (side === 'origin') {
-      this.originLocalityKey.set('');
-      this.originLocalityPending.set(null);
-    } else {
-      this.destinationLocalityKey.set('');
-      this.destinationLocalityPending.set(null);
+    if (currentKey && rows.some((r) => localityKey(r) === currentKey)) {
+      return currentKey;
     }
+    const name = currentSettlementName?.trim().toLowerCase();
+    if (name) {
+      const byName = rows.find((r) => r.settlement.trim().toLowerCase() === name);
+      if (byName) {
+        return localityKey(byName);
+      }
+    }
+    return rows.length === 1 ? localityKey(rows[0]!) : '';
   }
 
   /**
@@ -1559,7 +1598,6 @@ export class TripsNewDrawerComponent {
     this.routeKm.set(null);
     this.routeLoading.set(false);
     this.routeFailed.set(false);
-    this.operationalDistanceKmFromApi.set(null);
   }
 
   private applyRouteEndpointPrefill(
@@ -1678,8 +1716,11 @@ export class TripsNewDrawerComponent {
   }
 
   private unitConfigurationMismatchMessage(): string {
+    if (this.containerType() === 'na') {
+      return 'Selecciona una unidad para carga sin contenedor (rabón, volteo o pipa).';
+    }
     const configName = this.selectedOperationConfig()?.name ?? 'la configuración seleccionada';
-    return `Selecciona una unidad con configuración «${configName}».`;
+    return `Selecciona una unidad con configuración «${configName}» y equipo para el contenedor.`;
   }
 
   private labelForEquipmentId(id: string): string {
@@ -1768,7 +1809,7 @@ export class TripsNewDrawerComponent {
       return;
     }
     this.toast.show(
-      'El plan debe cumplir: salida ≤ llegada cliente ≤ llegada / fin.',
+      'El plan debe cumplir: salida ≤ cita cliente ≤ llegada origen.',
       'warning',
     );
   }
@@ -1849,12 +1890,12 @@ export class TripsNewDrawerComponent {
       return;
     }
     if (!t) {
-      this.toast.show('Indica fecha y hora de llegada al cliente.', 'warning');
+      this.toast.show('Indica fecha y hora de cita cliente.', 'warning');
       this.maybeToastPlannedScheduleOrder();
       return;
     }
     if (!dateTimeLocalValueToIso(t)) {
-      this.toast.show('La fecha y hora de llegada al cliente no son válidas.', 'warning');
+      this.toast.show('La fecha y hora de cita cliente no son válidas.', 'warning');
       return;
     }
     this.maybeToastPlannedScheduleOrder();
@@ -1876,12 +1917,12 @@ export class TripsNewDrawerComponent {
       return;
     }
     if (!t) {
-      this.toast.show('Indica fecha y hora de llegada / fin de maniobra.', 'warning');
+      this.toast.show('Indica fecha y hora de llegada origen.', 'warning');
       this.maybeToastPlannedScheduleOrder();
       return;
     }
     if (!dateTimeLocalValueToIso(t)) {
-      this.toast.show('La fecha y hora de llegada / fin no son válidas.', 'warning');
+      this.toast.show('La fecha y hora de llegada origen no son válidas.', 'warning');
       return;
     }
     this.maybeToastPlannedScheduleOrder();
@@ -1952,6 +1993,7 @@ export class TripsNewDrawerComponent {
       selectedOperationConfigId: selectedConfig?.id,
       selectedOperationConfigName: selectedConfig?.name,
       usesMultipleEquipment: this.usesMultipleEquipmentOperation(),
+      unitRequiresHitchedEquipment: this.selectedUnitRequiresHitchedEquipment(),
       equipmentPrimaryId: eq1,
       equipmentSecondaryId: eq2,
       equipmentPrimaryLabel: this.labelForEquipmentId(eq1),
@@ -2274,7 +2316,6 @@ export class TripsNewDrawerComponent {
   /** Limpia estado automático de diesel; no borra valores que el usuario capturó a mano. */
   private resetFuelEstimateAutoState(): void {
     this.dieselEstimateLoading.set(false);
-    this.operationalDistanceKmFromApi.set(null);
     this.lastFuelEstimateInputFp = '';
     this.lastAutoDieselLiters = '';
     this.lastAutoDieselAmount = '';

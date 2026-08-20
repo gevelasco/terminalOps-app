@@ -29,6 +29,7 @@ import type {
   Client,
   CreateClientPayload,
 } from '@shared/models/client.models';
+import { beginInFlight } from '@shared/utils/in-flight-guard';
 import { ClientContactInlineFieldsComponent } from '../client-contact-inline-fields/client-contact-inline-fields.component';
 import { ClientDeliveryLocationFieldsComponent } from '../client-delivery-location-fields/client-delivery-location-fields.component';
 import { ClientFiscalFieldsComponent } from '../client-fiscal-fields/client-fiscal-fields.component';
@@ -156,6 +157,9 @@ export class ClientsNewDrawerComponent {
   }
 
   submit(): void {
+    if (this.saving()) {
+      return;
+    }
     const nameText = this.name().trim();
     if (!nameText) {
       this.toast.show('Indica la razón social o nombre del cliente.', 'warning');
@@ -244,7 +248,9 @@ export class ClientsNewDrawerComponent {
       },
     };
 
-    this.saving.set(true);
+    if (!beginInFlight(this.saving)) {
+      return;
+    }
     this.clientsFeature
       .createClient(payload)
       .pipe(

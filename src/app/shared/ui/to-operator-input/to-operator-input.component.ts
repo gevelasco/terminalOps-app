@@ -128,7 +128,7 @@ export class ToOperatorInputComponent {
       }
       this.fetchedFromApi = true;
       this.operatorsApi
-        .getOperatorsList()
+        .getOperatorsList({ available: true })
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe({
           next: (operators) => {

@@ -136,4 +136,20 @@ describe('fleet-overview-trip-metrics', () => {
     } satisfies FleetOverviewTripDto;
     expect(overviewTripEtaDaysLabel(validTrip)).toBe('~7 días');
   });
+
+  it('uses planned window when overview stamps salida and fin with the same live clock', () => {
+    const liveClock = '2026-08-19T19:57:00.000Z';
+    const trip = {
+      ...baseTrip,
+      status: 'in_transit',
+      departureAt: liveClock,
+      arrivedAt: '2026-08-19T17:23:00.000Z',
+      returnAt: liveClock,
+      plannedDepartureAt: '2026-08-19T03:20:00.000Z',
+      plannedArrivalAt: '2026-08-19T15:23:00.000Z',
+      plannedCompletionAt: '2026-08-20T03:20:00.000Z',
+    } satisfies FleetOverviewTripDto;
+
+    expect(overviewTripEtaDaysLabel(trip)).toBe('~1 día');
+  });
 });

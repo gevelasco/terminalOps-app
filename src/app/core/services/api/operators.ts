@@ -62,7 +62,7 @@ export class OperatorsService {
     );
   }
 
-  /** Catálogo completo vía páginas de 100 (sin endpoint ilimitado). */
+  /** Catálogo vía páginas de 100 (sin endpoint ilimitado). */
   getOperatorsList(options?: { available?: boolean }): Observable<Operator[]> {
     return fetchAllResourcePages((page) =>
       this.getOperatorsPage({ ...options, page, limit: 100 }),

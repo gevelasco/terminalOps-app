@@ -240,6 +240,9 @@ export class ProfileDrawerConfigTabComponent {
   }
 
   saveCompanyConfiguration(): void {
+    if (this.saving()) {
+      return;
+    }
     const companyId = this.session.companyId();
     if (!companyId) {
       return;

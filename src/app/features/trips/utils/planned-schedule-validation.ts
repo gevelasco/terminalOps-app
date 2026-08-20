@@ -1,6 +1,6 @@
 import { dateTimeLocalValueToIso } from './datetime-local';
 
-/** Contrato de planificación: salida ≤ llegada cliente ≤ fin de maniobra. */
+/** Contrato de planificación: salida ≤ cita cliente ≤ llegada origen. */
 export function isPlannedScheduleValid(
   departureLocal: string,
   arrivalLocal: string,
@@ -28,7 +28,7 @@ export function plannedScheduleArrivalOrderIssue(
     return null;
   }
   if (new Date(arrivalIso).getTime() < new Date(departureIso).getTime()) {
-    return 'La llegada al cliente no puede ser anterior a la salida.';
+    return 'La cita cliente no puede ser anterior a la salida.';
   }
   return null;
 }
@@ -43,7 +43,7 @@ export function plannedScheduleCompletionOrderIssue(
     return null;
   }
   if (new Date(completionIso).getTime() < new Date(arrivalIso).getTime()) {
-    return 'La llegada / fin no puede ser anterior a la llegada al cliente.';
+    return 'La llegada origen no puede ser anterior a la cita cliente.';
   }
   return null;
 }
@@ -58,7 +58,7 @@ export function plannedScheduleCompletionDepartureOrderIssue(
     return null;
   }
   if (new Date(completionIso).getTime() < new Date(departureIso).getTime()) {
-    return 'La llegada / fin no puede ser anterior a la salida.';
+    return 'La llegada origen no puede ser anterior a la salida.';
   }
   return null;
 }
