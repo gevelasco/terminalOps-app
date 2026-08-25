@@ -73,4 +73,15 @@ export class AuthService {
       );
     return this.refreshInFlight$;
   }
+
+  /** Revoca el refresh en el API. No espera respuesta para no bloquear el logout. */
+  revokeRefreshSession(): void {
+    const refreshToken = this.session.refreshToken();
+    if (!refreshToken) {
+      return;
+    }
+    this.httpPlain
+      .post<{ ok: true }>(`${environment.apiUrl}/auth/logout`, { refreshToken })
+      .subscribe({ error: () => undefined });
+  }
 }

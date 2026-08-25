@@ -33,6 +33,7 @@ export class AuthFacade {
   }
 
   logout(): void {
+    this.auth.revokeRefreshSession();
     this.logoutService.clearClientState();
   }
 

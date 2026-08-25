@@ -21,6 +21,7 @@ import {
 import { filter } from 'rxjs';
 import { ProfileDrawerComponent } from '@core/components/profile-drawer/profile-drawer.component';
 import { AuthFacade } from '@core/services/auth.facade';
+import { SessionLifecycleService } from '@core/services/session-lifecycle.service';
 import { SessionService } from '@core/services/state/session';
 import { NotificationsUnreadStore } from '@core/services/state/notifications-unread.store';
 import {
@@ -48,6 +49,7 @@ import { roleDisplayLabel, visibleNavItems } from '@shared/utils/access-control'
 export class ShellComponent implements OnDestroy {
   private readonly auth = inject(AuthFacade);
   private readonly session = inject(SessionService);
+  private readonly sessionLifecycle = inject(SessionLifecycleService);
   private readonly profiles = inject(UserProfileStore);
   private readonly notificationsUnread = inject(NotificationsUnreadStore);
   private readonly router = inject(Router);
@@ -151,6 +153,7 @@ export class ShellComponent implements OnDestroy {
       this.profiles.hydrateFromSession();
     }
     this.notificationsUnread.start();
+    this.sessionLifecycle.start();
     this.router.events
       .pipe(
         filter((e): e is NavigationEnd => e instanceof NavigationEnd),
@@ -233,6 +236,7 @@ export class ShellComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.sessionLifecycle.stop();
     this.notificationsUnread.stop();
     document.body.style.overflow = '';
   }

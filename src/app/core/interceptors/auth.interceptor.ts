@@ -9,7 +9,11 @@ import { LogoutService } from '@core/services/logout.service';
 import { SessionService } from '@core/services/state/session';
 
 function isPublicAuthUrl(url: string): boolean {
-  return url.includes('/auth/login') || url.includes('/auth/refresh');
+  return (
+    url.includes('/auth/login') ||
+    url.includes('/auth/refresh') ||
+    url.includes('/auth/logout')
+  );
 }
 
 function unauthorizedStatus(error: unknown): number | null {
