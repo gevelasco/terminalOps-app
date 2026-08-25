@@ -9,6 +9,10 @@ import type { CompanyOperationalSettings } from '@shared/models/company-operatio
 import type { MaintenanceDatePeriod } from '@shared/models/company-operational-settings.models';
 import { normalizeApiIsoDate } from '@core/utils/api-date';
 import {
+  SESSION_TAB_CHANNEL,
+  SESSION_TAB_HANDOFF_MS,
+} from '@core/utils/session-lifecycle.util';
+import {
   resolveAllowedModules,
   canReadModule as canReadModuleAccess,
   canWriteModule as canWriteModuleAccess,
@@ -19,6 +23,13 @@ import { normalizeSubscriptionPlanId } from '@shared/billing/subscription-plans'
 
 const SESSION_STORAGE_KEY = '_to_s';
 const SESSION_OBFUSCATE_KEY = 't3rm1n4l0ps_s3ss10n';
+
+type SessionTabMessage =
+  | { type: 'request'; tabId: string }
+  | { type: 'session'; tabId: string; raw: string }
+  | { type: 'logout'; tabId: string };
+
+let afterSessionPersist: (() => void) | null = null;
 
 function obfuscate(str: string, key: string): string {
   const keyLen = key.length;
@@ -95,11 +106,30 @@ function saveEncryptedSession(data: SessionData): void {
       /* ignore */
     }
   }
+  afterSessionPersist?.();
 }
 
 @Injectable({ providedIn: 'root' })
 export class SessionService {
+  private readonly tabId =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `tab-${Date.now()}`;
+  private readonly channel: BroadcastChannel | null =
+    typeof BroadcastChannel === 'undefined'
+      ? null
+      : new BroadcastChannel(SESSION_TAB_CHANNEL);
+  private suppressPublish = false;
+  private resolveHandoff: (() => void) | null = null;
+  private readonly remoteLogoutListeners = new Set<() => void>();
+  private readonly handshakeDone: Promise<void>;
+
   private readonly data = signal<SessionData | null>(loadEncryptedSession());
+
+  constructor() {
+    afterSessionPersist = () => this.broadcastSession();
+    this.handshakeDone = this.startHandshake();
+  }
 
   readonly token = computed(() => this.data()?.token ?? null);
   readonly refreshToken = computed(() => this.data()?.refreshToken ?? null);
@@ -243,6 +273,15 @@ export class SessionService {
   isLoggedIn(): boolean {
     const d = this.data();
     return !!d?.token && !!d.companyId;
+  }
+
+  whenReady(): Promise<void> {
+    return this.handshakeDone;
+  }
+
+  onRemoteLogout(listener: () => void): () => void {
+    this.remoteLogoutListeners.add(listener);
+    return () => this.remoteLogoutListeners.delete(listener);
   }
 
   setSession(
@@ -628,6 +667,110 @@ export class SessionService {
       sessionStorage.removeItem('terminalops.session');
     } catch {
       /* ignore private mode / blocked storage */
+    }
+    this.broadcastLogout();
+  }
+
+  private startHandshake(): Promise<void> {
+    if (!this.channel) {
+      return Promise.resolve();
+    }
+    this.channel.onmessage = (event: MessageEvent<SessionTabMessage>) => {
+      this.onTabMessage(event.data);
+    };
+    if (this.isLoggedIn()) {
+      return Promise.resolve();
+    }
+    this.channel.postMessage({ type: 'request', tabId: this.tabId } satisfies SessionTabMessage);
+    return new Promise((resolve) => {
+      this.resolveHandoff = resolve;
+      window.setTimeout(() => {
+        if (this.resolveHandoff === resolve) {
+          this.resolveHandoff = null;
+          resolve();
+        }
+      }, SESSION_TAB_HANDOFF_MS);
+    });
+  }
+
+  private onTabMessage(message: SessionTabMessage | null): void {
+    if (!message || message.tabId === this.tabId) {
+      return;
+    }
+    if (message.type === 'request') {
+      this.broadcastSession();
+      return;
+    }
+    if (message.type === 'session' && message.raw) {
+      this.adoptEncryptedBlob(message.raw);
+      this.resolveHandoff?.();
+      this.resolveHandoff = null;
+      return;
+    }
+    if (message.type === 'logout') {
+      this.applyRemoteLogout();
+    }
+  }
+
+  private adoptEncryptedBlob(raw: string): void {
+    this.suppressPublish = true;
+    try {
+      sessionStorage.setItem(SESSION_STORAGE_KEY, raw);
+      const parsed = loadEncryptedSession();
+      if (parsed) {
+        this.data.set(parsed);
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      this.suppressPublish = false;
+    }
+  }
+
+  private applyRemoteLogout(): void {
+    if (!this.data()) {
+      return;
+    }
+    this.suppressPublish = true;
+    try {
+      this.data.set(null);
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      sessionStorage.removeItem('terminalops.session');
+      this.remoteLogoutListeners.forEach((listener) => listener());
+    } catch {
+      /* ignore */
+    } finally {
+      this.suppressPublish = false;
+    }
+  }
+
+  private broadcastSession(): void {
+    if (this.suppressPublish || !this.channel) {
+      return;
+    }
+    try {
+      const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+      this.channel.postMessage({
+        type: 'session',
+        tabId: this.tabId,
+        raw,
+      } satisfies SessionTabMessage);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private broadcastLogout(): void {
+    if (this.suppressPublish || !this.channel) {
+      return;
+    }
+    try {
+      this.channel.postMessage({ type: 'logout', tabId: this.tabId } satisfies SessionTabMessage);
+    } catch {
+      /* ignore */
     }
   }
 

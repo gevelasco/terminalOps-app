@@ -1,6 +1,9 @@
 export const SESSION_IDLE_MS = 45 * 60 * 1000;
 export const ACCESS_REFRESH_SKEW_MS = 3 * 60 * 1000;
 export const SESSION_TICK_MS = 30_000;
+export const SESSION_TAB_HANDOFF_MS = 120;
+export const LAST_ACTIVITY_STORAGE_KEY = 'terminalops.lastActivity';
+export const SESSION_TAB_CHANNEL = 'terminalops.auth';
 
 type JwtExpPayload = {
   exp?: number;
@@ -44,4 +47,28 @@ export function isIdlePastLimit(
   idleMs = SESSION_IDLE_MS,
 ): boolean {
   return now - lastActivityAt >= idleMs;
+}
+
+export function readSharedLastActivity(now = Date.now()): number {
+  if (typeof localStorage === 'undefined') {
+    return now;
+  }
+  try {
+    const raw = localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY);
+    const parsed = raw ? Number(raw) : NaN;
+    return Number.isFinite(parsed) ? parsed : now;
+  } catch {
+    return now;
+  }
+}
+
+export function writeSharedLastActivity(at = Date.now()): void {
+  if (typeof localStorage === 'undefined') {
+    return;
+  }
+  try {
+    localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(at));
+  } catch {
+    /* private mode */
+  }
 }

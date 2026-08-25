@@ -1,7 +1,10 @@
 import {
+  LAST_ACTIVITY_STORAGE_KEY,
   isIdlePastLimit,
   readJwtExpMs,
+  readSharedLastActivity,
   shouldRefreshAccessToken,
+  writeSharedLastActivity,
 } from './session-lifecycle.util';
 
 describe('session-lifecycle.util', () => {
@@ -30,5 +33,11 @@ describe('session-lifecycle.util', () => {
     const now = Date.now();
     expect(isIdlePastLimit(now - 10 * 60 * 1000, now)).toBe(false);
     expect(isIdlePastLimit(now - 45 * 60 * 1000, now)).toBe(true);
+  });
+
+  it('shares last activity across tabs via localStorage', () => {
+    localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
+    writeSharedLastActivity(1_700_000_000_000);
+    expect(readSharedLastActivity()).toBe(1_700_000_000_000);
   });
 });

@@ -2,12 +2,15 @@ import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthFacade } from '@core/services/auth.facade';
 import { AuthService } from '@core/services/api/auth';
+import { LogoutService } from '@core/services/logout.service';
 import { SessionService } from '@core/services/state/session';
 import { ToastService } from '@core/notifications/toast.service';
 import {
   SESSION_TICK_MS,
   isIdlePastLimit,
+  readSharedLastActivity,
   shouldRefreshAccessToken,
+  writeSharedLastActivity,
 } from '@core/utils/session-lifecycle.util';
 
 const ACTIVITY_EVENTS: readonly (keyof DocumentEventMap)[] = [
@@ -21,14 +24,15 @@ export class SessionLifecycleService {
   private readonly session = inject(SessionService);
   private readonly auth = inject(AuthFacade);
   private readonly authApi = inject(AuthService);
+  private readonly logoutService = inject(LogoutService);
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
 
   private started = false;
-  private lastActivityAt = Date.now();
   private tickTimer: ReturnType<typeof setInterval> | null = null;
+  private offRemoteLogout: (() => void) | null = null;
   private readonly onActivity = (): void => {
-    this.lastActivityAt = Date.now();
+    writeSharedLastActivity();
   };
   private readonly onVisibility = (): void => {
     if (document.visibilityState === 'visible') {
@@ -41,11 +45,12 @@ export class SessionLifecycleService {
       return;
     }
     this.started = true;
-    this.lastActivityAt = Date.now();
+    writeSharedLastActivity();
     for (const event of ACTIVITY_EVENTS) {
       document.addEventListener(event, this.onActivity, { passive: true });
     }
     document.addEventListener('visibilitychange', this.onVisibility);
+    this.offRemoteLogout = this.session.onRemoteLogout(() => this.handleRemoteLogout());
     this.tickTimer = setInterval(() => this.tick(), SESSION_TICK_MS);
     this.tick();
   }
@@ -59,6 +64,8 @@ export class SessionLifecycleService {
       document.removeEventListener(event, this.onActivity);
     }
     document.removeEventListener('visibilitychange', this.onVisibility);
+    this.offRemoteLogout?.();
+    this.offRemoteLogout = null;
     if (this.tickTimer) {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
@@ -69,7 +76,7 @@ export class SessionLifecycleService {
     if (!this.session.isLoggedIn()) {
       return;
     }
-    if (isIdlePastLimit(this.lastActivityAt)) {
+    if (isIdlePastLimit(readSharedLastActivity())) {
       this.endIdleSession();
       return;
     }
@@ -88,6 +95,12 @@ export class SessionLifecycleService {
     this.stop();
     this.auth.logout();
     this.toast.show('Cerramos la sesión por inactividad.', 'info');
+    void this.router.navigateByUrl('/login', { replaceUrl: true });
+  }
+
+  private handleRemoteLogout(): void {
+    this.stop();
+    this.logoutService.clearClientState();
     void this.router.navigateByUrl('/login', { replaceUrl: true });
   }
 }
