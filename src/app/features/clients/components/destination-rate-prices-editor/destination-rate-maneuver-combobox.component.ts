@@ -1,14 +1,17 @@
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
   ElementRef,
+  Injector,
   computed,
   effect,
   inject,
   input,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 import { installAutocompleteOutsideDismiss } from '@shared/ui/autocomplete-outside-dismiss';
 import type { ToSelectOption } from '@shared/ui/to-select/to-select.component';
@@ -49,7 +52,16 @@ let seq = 0;
         [attr.aria-controls]="open() ? listId : null"
       />
       @if (open() && !disabled()) {
-        <ul [id]="listId" class="dr-maneuver-combobox__list" role="listbox">
+        <ul
+          #list
+          [id]="listId"
+          class="dr-maneuver-combobox__list dr-maneuver-combobox__list--floating"
+          role="listbox"
+          [style.top.px]="listBox().top"
+          [style.left.px]="listBox().left"
+          [style.width.px]="listBox().width"
+          [style.maxHeight.px]="listBox().maxHeight"
+        >
           @if (suggestions().length > 0) {
             @for (opt of suggestions(); track opt.value) {
               <li
@@ -79,6 +91,9 @@ let seq = 0;
 export class DestinationRateManeuverComboboxComponent {
   private readonly hostEl = inject(ElementRef<HTMLElement>);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
+  private readonly fieldInput = viewChild<ElementRef<HTMLInputElement>>('fieldInput');
+  private readonly listEl = viewChild<ElementRef<HTMLUListElement>>('list');
 
   readonly operationConfigurationId = input('');
   readonly operationConfigurationName = input('');
@@ -95,6 +110,7 @@ export class DestinationRateManeuverComboboxComponent {
 
   readonly open = signal(false);
   readonly inputText = signal('');
+  readonly listBox = signal({ top: 0, left: 0, width: 0, maxHeight: 160 });
 
   readonly suggestions = computed(() => {
     const q = this.inputText().trim().toLowerCase();
@@ -105,12 +121,15 @@ export class DestinationRateManeuverComboboxComponent {
     return opts.filter((o) => String(o.label).trim().toLowerCase().includes(q));
   });
 
+  private repositionListening = false;
+
   constructor() {
     installAutocompleteOutsideDismiss(
       this.hostEl,
       () => this.open(),
-      () => this.open.set(false),
+      () => this.closeList(),
       this.destroyRef,
+      () => this.listEl()?.nativeElement,
     );
 
     effect(() => {
@@ -123,24 +142,30 @@ export class DestinationRateManeuverComboboxComponent {
         this.inputText.set(label);
       }
     });
+
+    this.destroyRef.onDestroy(() => this.unbindReposition());
   }
 
   onFocus(): void {
-    if (!this.disabled()) {
-      this.open.set(true);
+    if (this.disabled()) {
+      return;
     }
+    this.openList();
   }
 
   onInput(ev: Event): void {
     const text = (ev.target as HTMLInputElement).value;
     this.inputText.set(text);
-    this.open.set(true);
+    this.openList();
     this.emitResolved(text);
   }
 
   onBlur(): void {
-    this.open.set(false);
-    this.emitResolved(this.inputText());
+    queueMicrotask(() => {
+      if (this.open()) {
+        this.closeList();
+      }
+    });
   }
 
   onPickPointerDown(opt: ToSelectOption, ev: PointerEvent): void {
@@ -148,11 +173,81 @@ export class DestinationRateManeuverComboboxComponent {
     const id = String(opt.value);
     const name = String(opt.label);
     this.inputText.set(name);
-    this.open.set(false);
+    this.closeList(false);
     this.valueChange.emit({
       operationConfigurationId: id,
       operationConfigurationName: name,
     });
+  }
+
+  private openList(): void {
+    this.open.set(true);
+    this.syncListPosition();
+    afterNextRender(() => this.attachFloatingList(), { injector: this.injector });
+  }
+
+  private closeList(emit = true): void {
+    this.open.set(false);
+    this.unbindReposition();
+    if (emit) {
+      this.emitResolved(this.inputText());
+    }
+  }
+
+  private attachFloatingList(): void {
+    const ul = this.listEl()?.nativeElement;
+    if (!ul || !this.open()) {
+      return;
+    }
+    if (ul.parentElement !== document.body) {
+      document.body.appendChild(ul);
+    }
+    this.syncListPosition();
+    this.bindReposition();
+  }
+
+  private readonly syncListPosition = (): void => {
+    const input = this.fieldInput()?.nativeElement;
+    if (!input) {
+      return;
+    }
+    const rect = input.getBoundingClientRect();
+    const gap = 2;
+    const preferred = 160;
+    const spaceBelow = window.innerHeight - rect.bottom - gap;
+    const spaceAbove = rect.top - gap;
+    const openUp = spaceBelow < 96 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(72, Math.min(preferred, openUp ? spaceAbove : spaceBelow));
+    const top = openUp ? Math.max(gap, rect.top - maxHeight) : rect.bottom + gap;
+    const next = { top, left: rect.left, width: rect.width, maxHeight };
+    const prev = this.listBox();
+    if (
+      prev.top === next.top &&
+      prev.left === next.left &&
+      prev.width === next.width &&
+      prev.maxHeight === next.maxHeight
+    ) {
+      return;
+    }
+    this.listBox.set(next);
+  };
+
+  private bindReposition(): void {
+    if (this.repositionListening) {
+      return;
+    }
+    this.repositionListening = true;
+    window.addEventListener('scroll', this.syncListPosition, true);
+    window.addEventListener('resize', this.syncListPosition);
+  }
+
+  private unbindReposition(): void {
+    if (!this.repositionListening) {
+      return;
+    }
+    this.repositionListening = false;
+    window.removeEventListener('scroll', this.syncListPosition, true);
+    window.removeEventListener('resize', this.syncListPosition);
   }
 
   private emitResolved(raw: string): void {

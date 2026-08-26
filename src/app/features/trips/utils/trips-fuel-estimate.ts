@@ -23,10 +23,16 @@ export function formatFuelEstimateMoney(value: number): string {
   });
 }
 
+/** Espera tras el último cambio de km (OSRM u override) antes de llamar fuel-estimate. */
+export const FUEL_ESTIMATE_DEBOUNCE_MS = 800;
+
 /**
  * Nota: la estimación del backend es heurística (distancia, configuración,
  * tipo de carga y peso); la unidad/equipos seleccionados no alteran el cálculo,
  * por eso no forman parte de la petición ni disparan re-estimaciones.
+ *
+ * Se dispara en cuanto hay km de ida (OSRM o override). Peso y carga afinan
+ * el estimado si el usuario los captura después; sin peso se envía 0.
  */
 export function buildFuelEstimateRequest(params: {
   distanceKm: number | null;
@@ -43,19 +49,7 @@ export function buildFuelEstimateRequest(params: {
     return null;
   }
 
-  // Sin datos de carga completos la estimación sería especulativa: no estimar
-  // hasta tener configuración, tipo de contenedor, tipo de carga y peso.
-  if (
-    !params.operationType.trim() ||
-    !String(params.loadType).trim() ||
-    !String(params.containerType).trim()
-  ) {
-    return null;
-  }
-  const weight = parseNonNegativeNumber(params.approximateWeightTons);
-  if (weight == null) {
-    return null;
-  }
+  const weight = parseNonNegativeNumber(params.approximateWeightTons) ?? 0;
 
   return {
     distanceKm: km,

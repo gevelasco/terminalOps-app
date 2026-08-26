@@ -66,13 +66,19 @@
       <div class="destination-rates-new-drawer__grid destination-rates-new-drawer__distance-grid">
         <to-input
           label="Distancia ruta (ida)"
-          placeholder="Se calcula al completar origen y destino"
-          [disabled]="true"
-          [displayValue]="routeDistanceDisplay()"
+          placeholder="Sugerido por OSRM"
+          [suffix]="routeDistanceInputSuffix()"
+          [groupThousands]="true"
+          [disabled]="routeDistanceInputDisabled()"
+          [displayValue]="routeDistanceInputDisplayValue()"
+          [value]="routeDistanceKmInput()"
+          (valueChange)="onRouteDistanceKmTyped($event)"
+          (blurNotify)="onRouteDistanceKmBlur()"
         />
         <to-input
           label="Distancia operativa (ida/vuelta)"
-          placeholder="Se calcula al completar origen y destino"
+          placeholder="Ruta × 2"
+          [suffix]="operationalDistanceInputSuffix()"
           [disabled]="true"
           [displayValue]="operationalDistanceDisplay()"
         />

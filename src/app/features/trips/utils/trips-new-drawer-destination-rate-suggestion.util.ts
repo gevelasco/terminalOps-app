@@ -3,6 +3,7 @@ import {
   suggestedClientChargeFromDestinationRate,
   suggestedEstimatedTollFromDestinationRate,
   suggestedOperatorPaymentFromDestinationRate,
+  suggestedPerDiemFromDestinationRate,
 } from '@features/clients/utils/find-destination-rate-by-postal-code';
 import { formatFuelEstimateMoney } from '@features/trips/utils/trips-fuel-estimate';
 import { stripGroupedNumberInput } from '@features/trips/utils/parse-non-negative';
@@ -53,6 +54,7 @@ export type DestinationRateSuggestionFields = {
   /** Si billing está off, la UI de cobro debe quedar en `none` (no aplica valor). */
   clientChargeUi: DestinationRateSuggestionUi;
   casetasAmount: string | null;
+  perDiemAmount: string | null;
 };
 
 /**
@@ -66,6 +68,7 @@ export function computeDestinationRateSuggestionFields(
 ): DestinationRateSuggestionFields {
   const opPay = suggestedOperatorPaymentFromDestinationRate(rate, operationType);
   const toll = suggestedEstimatedTollFromDestinationRate(rate, operationType);
+  const perDiem = suggestedPerDiemFromDestinationRate(rate, operationType);
 
   let clientCharge: string | null = null;
   let clientChargeUi: DestinationRateSuggestionUi = 'none';
@@ -80,6 +83,7 @@ export function computeDestinationRateSuggestionFields(
     clientCharge,
     clientChargeUi,
     casetasAmount: toll != null ? formatFuelEstimateMoney(toll) : null,
+    perDiemAmount: perDiem != null ? formatFuelEstimateMoney(perDiem) : null,
   };
 }
 
@@ -87,6 +91,7 @@ export type DestinationRateManualEditDetection = {
   operatorManual: boolean;
   chargeManual: boolean;
   casetasManual: boolean;
+  perDiemManual: boolean;
   locked: boolean;
 };
 
@@ -94,25 +99,31 @@ export function detectDestinationRateManualEdits(params: {
   operatorQuota: string;
   clientCharge: string;
   casetasAmount: string;
+  perDiemAmount: string;
   lastAutoOperatorQuota: string;
   lastAutoClientCharge: string;
   lastAutoCasetasAmount: string;
+  lastAutoPerDiemAmount: string;
 }): DestinationRateManualEditDetection {
   const op = stripGroupedNumberInput(params.operatorQuota);
   const charge = stripGroupedNumberInput(params.clientCharge);
   const casetas = stripGroupedNumberInput(params.casetasAmount);
+  const perDiem = stripGroupedNumberInput(params.perDiemAmount);
   const autoOp = stripGroupedNumberInput(params.lastAutoOperatorQuota);
   const autoCharge = stripGroupedNumberInput(params.lastAutoClientCharge);
   const autoCasetas = stripGroupedNumberInput(params.lastAutoCasetasAmount);
+  const autoPerDiem = stripGroupedNumberInput(params.lastAutoPerDiemAmount);
 
   const operatorManual = autoOp !== '' && op !== '' && op !== autoOp;
   const chargeManual = autoCharge !== '' && charge !== '' && charge !== autoCharge;
   const casetasManual = autoCasetas !== '' && casetas !== '' && casetas !== autoCasetas;
+  const perDiemManual = autoPerDiem !== '' && perDiem !== '' && perDiem !== autoPerDiem;
 
   return {
     operatorManual,
     chargeManual,
     casetasManual,
-    locked: operatorManual || chargeManual || casetasManual,
+    perDiemManual,
+    locked: operatorManual || chargeManual || casetasManual || perDiemManual,
   };
 }

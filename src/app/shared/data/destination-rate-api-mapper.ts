@@ -45,6 +45,7 @@ function mapApiDestinationRatePrice(row: Record<string, unknown>): DestinationRa
     clientCharge: parseRateAmount(row['clientCharge']),
     operatorPaymentEstimate: parseRateAmount(row['operatorPaymentEstimate']),
     estimatedTollAmount: parseRateAmount(row['estimatedTollAmount']),
+    perDiemAmount: parseRateAmount(row['perDiemAmount']),
     notes: String(row['notes'] ?? '').trim() || undefined,
     createdAt: row['createdAt'] ? String(row['createdAt']) : undefined,
     updatedAt: row['updatedAt'] ? String(row['updatedAt']) : undefined,

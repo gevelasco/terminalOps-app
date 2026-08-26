@@ -109,6 +109,7 @@ export class DestinationRatesDetailDrawerFacade {
       charge: formatMxn(p.clientCharge),
       operator: formatMxn(p.operatorPaymentEstimate),
       toll: formatMxn(p.estimatedTollAmount),
+      perDiem: formatMxn(p.perDiemAmount),
       updatedAt: formatDestinationRateUpdatedAt(p.updatedAt ?? p.createdAt),
     })),
   );

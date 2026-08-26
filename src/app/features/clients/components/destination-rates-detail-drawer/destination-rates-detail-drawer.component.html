@@ -3,6 +3,7 @@
   wide
   headerClass="fleet-unit-detail__header"
   bodyClass="fleet-unit-body fleet-unit-detail"
+  panelClass="destination-rates-detail-drawer__panel"
   [loading]="vm.drawerLoading()"
   skeletonVariant="detail"
   (dismiss)="vm.requestDismiss()"
@@ -194,9 +195,10 @@
             <thead>
               <tr>
                 <th scope="col">Tipo de maniobra</th>
-                <th scope="col">Cobro cliente</th>
-                <th scope="col">Pago operador</th>
-                <th scope="col">Casetas monto</th>
+                <th scope="col">Tarifa</th>
+                <th scope="col">Operador</th>
+                <th scope="col">Casetas</th>
+                <th scope="col">Viáticos</th>
                 <th scope="col">Última actualización</th>
               </tr>
             </thead>
@@ -207,6 +209,7 @@
                   <td>{{ row.charge }}</td>
                   <td>{{ row.operator }}</td>
                   <td>{{ row.toll }}</td>
+                  <td>{{ row.perDiem }}</td>
                   <td>{{ row.updatedAt }}</td>
                 </tr>
               }

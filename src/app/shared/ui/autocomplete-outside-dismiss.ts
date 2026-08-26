@@ -6,15 +6,25 @@ export function installAutocompleteOutsideDismiss(
   isOpen: () => boolean,
   close: () => void,
   destroyRef: DestroyRef,
+  extraRoot?: () => Node | null | undefined,
 ): void {
   const onDocumentPointerDown = (ev: PointerEvent): void => {
     if (!isOpen()) {
       return;
     }
     const target = ev.target;
-    if (target instanceof Node && !hostRef.nativeElement.contains(target)) {
+    if (!(target instanceof Node)) {
       close();
+      return;
     }
+    if (hostRef.nativeElement.contains(target)) {
+      return;
+    }
+    const extra = extraRoot?.();
+    if (extra && extra.contains(target)) {
+      return;
+    }
+    close();
   };
   document.addEventListener('pointerdown', onDocumentPointerDown);
   destroyRef.onDestroy(() => {

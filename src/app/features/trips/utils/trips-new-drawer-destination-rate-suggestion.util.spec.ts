@@ -33,14 +33,17 @@ describe('trips-new-drawer-destination-rate-suggestion.util', () => {
         operatorQuota: edited,
         clientCharge: formatted,
         casetasAmount: formatted,
+        perDiemAmount: formatted,
         lastAutoOperatorQuota: formatted,
         lastAutoClientCharge: formatted,
         lastAutoCasetasAmount: formatted,
+        lastAutoPerDiemAmount: formatted,
       }),
     ).toEqual({
       operatorManual: true,
       chargeManual: false,
       casetasManual: false,
+      perDiemManual: false,
       locked: true,
     });
     expect(autoAssistValueMatches(formatted, formatted)).toBe(true);
@@ -56,6 +59,7 @@ describe('trips-new-drawer-destination-rate-suggestion.util', () => {
           operatorPaymentEstimate: 1200,
           clientCharge: 8000,
           estimatedTollAmount: 500,
+          perDiemAmount: 350,
         },
       ],
     } as unknown as DestinationRate;
@@ -65,5 +69,6 @@ describe('trips-new-drawer-destination-rate-suggestion.util', () => {
     expect(fields.clientChargeUi).toBe('none');
     expect(fields.operatorQuota).toBe(formatFuelEstimateMoney(1200));
     expect(fields.casetasAmount).toBe(formatFuelEstimateMoney(500));
+    expect(fields.perDiemAmount).toBe(formatFuelEstimateMoney(350));
   });
 });

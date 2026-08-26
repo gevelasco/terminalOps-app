@@ -51,7 +51,11 @@ import {
   isDestinationRateRouteInputComplete,
   operationalDistanceFromRouteKm,
 } from '@features/clients/utils/destination-rate-route-resolution';
-import { formatRouteKmEsMx } from '@features/trips/utils/maniobra-route-display';
+import {
+  formatRouteKmEsMx,
+  formatRouteKmInputValue,
+  parseRouteKmOneWayInput,
+} from '@features/trips/utils/maniobra-route-display';
 import type {
   DestinationRate,
   DestinationRatePriceDraft,
@@ -132,7 +136,7 @@ export class DestinationRatesNewDrawerComponent {
   readonly routeMode = signal<DestinationRateRouteDrawerMode>('INVALIDATED');
   private readonly resolvedRouteKey = signal<DestinationRateRouteKey | null>(null);
   private readonly routeDistanceKm = signal<number | null>(null);
-  private readonly operationalDistanceKm = signal<number | null>(null);
+  readonly routeDistanceKmInput = signal('');
   private readonly routeLoading = signal(false);
   private readonly duplicateChecking = signal(false);
   private readonly destinationCoords = signal<LatLon | null>(null);
@@ -152,7 +156,7 @@ export class DestinationRatesNewDrawerComponent {
     }
     const km = this.routeDistanceKm();
     if (km != null && km > 0) {
-      return `${formatRouteKmEsMx(km)} km`;
+      return formatRouteKmEsMx(km);
     }
     if (this.routeInputComplete()) {
       return 'No disponible';
@@ -164,14 +168,50 @@ export class DestinationRatesNewDrawerComponent {
     if (this.routeLoading() || this.duplicateChecking()) {
       return 'Calculando…';
     }
-    const km = this.operationalDistanceKm();
+    const km = this.routeDistanceKm();
     if (km != null && km > 0) {
-      return `${formatRouteKmEsMx(km)} km`;
+      return formatRouteKmEsMx(operationalDistanceFromRouteKm(km));
     }
     if (this.routeInputComplete()) {
       return 'No disponible';
     }
     return '';
+  });
+
+  readonly operationalDistanceInputSuffix = computed(() => {
+    if (this.routeLoading() || this.duplicateChecking()) {
+      return '';
+    }
+    const km = this.routeDistanceKm();
+    return km != null && km > 0 ? 'km' : '';
+  });
+
+  readonly routeDistanceInputDisabled = computed(
+    () =>
+      this.routeLoading() ||
+      this.duplicateChecking() ||
+      this.routeMode() !== 'CREATE_MODE',
+  );
+
+  readonly routeDistanceInputSuffix = computed(() => {
+    if (this.routeLoading() || this.duplicateChecking()) {
+      return '';
+    }
+    if (this.routeMode() === 'CREATE_MODE') {
+      return 'km';
+    }
+    const km = this.routeDistanceKm();
+    return km != null && km > 0 ? 'km' : '';
+  });
+
+  readonly routeDistanceInputDisplayValue = computed(() => {
+    if (this.routeLoading() || this.duplicateChecking()) {
+      return 'Calculando…';
+    }
+    if (this.routeMode() !== 'CREATE_MODE') {
+      return this.routeDistanceDisplay();
+    }
+    return undefined;
   });
 
   readonly routeInputComplete = computed(() =>
@@ -285,6 +325,30 @@ export class DestinationRatesNewDrawerComponent {
     if (rate) {
       this.openExisting.emit(rate);
     }
+  }
+
+  onRouteDistanceKmTyped(raw: string): void {
+    if (this.routeDistanceInputDisabled()) {
+      return;
+    }
+    this.routeDistanceKmInput.set(raw);
+    const parsed = parseRouteKmOneWayInput(raw);
+    if (parsed == null) {
+      return;
+    }
+    this.routeDistanceKm.set(parsed);
+  }
+
+  onRouteDistanceKmBlur(): void {
+    if (this.routeDistanceInputDisabled()) {
+      return;
+    }
+    const parsed = parseRouteKmOneWayInput(this.routeDistanceKmInput());
+    if (parsed != null) {
+      this.applyRouteDistanceKm(parsed);
+      return;
+    }
+    this.routeDistanceKmInput.set(formatRouteKmInputValue(this.routeDistanceKm()));
   }
 
   @HostListener('document:keydown', ['$event'])
@@ -481,17 +545,10 @@ export class DestinationRatesNewDrawerComponent {
     this.destinationCoords.set(null);
     this.routeLoading.set(false);
     if (!destinationRateHasRouteCache(rate)) {
-      this.routeDistanceKm.set(null);
-      this.operationalDistanceKm.set(null);
+      this.applyRouteDistanceKm(null);
       return;
     }
-    const routeDistanceKm = rate.routeDistanceKm!;
-    this.routeDistanceKm.set(routeDistanceKm);
-    this.operationalDistanceKm.set(
-      rate.operationalDistanceKm != null && rate.operationalDistanceKm > 0
-        ? rate.operationalDistanceKm
-        : operationalDistanceFromRouteKm(routeDistanceKm, rate.isRoundTrip !== false),
-    );
+    this.applyRouteDistanceKm(rate.routeDistanceKm ?? null);
   }
 
   private resolveRouteDistances(input: {
@@ -534,12 +591,7 @@ export class DestinationRatesNewDrawerComponent {
         if (this.routeMode() !== 'CREATE_MODE') {
           return;
         }
-        this.routeDistanceKm.set(routeKm);
-        this.operationalDistanceKm.set(
-          routeKm != null && routeKm > 0
-            ? operationalDistanceFromRouteKm(routeKm)
-            : null,
-        );
+        this.applyRouteDistanceKm(routeKm);
       }),
       catchError(() => {
         if (this.routeMode() === 'CREATE_MODE') {
@@ -556,9 +608,13 @@ export class DestinationRatesNewDrawerComponent {
     );
   }
 
+  private applyRouteDistanceKm(km: number | null): void {
+    this.routeDistanceKm.set(km);
+    this.routeDistanceKmInput.set(formatRouteKmInputValue(km));
+  }
+
   private clearDistancesOnly(): void {
-    this.routeDistanceKm.set(null);
-    this.operationalDistanceKm.set(null);
+    this.applyRouteDistanceKm(null);
     this.routeLoading.set(false);
     this.destinationCoords.set(null);
   }

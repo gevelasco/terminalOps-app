@@ -19,6 +19,80 @@ export function parseRateMoneyInput(raw: string): number | undefined {
   return Number.isFinite(n) && n >= 0 ? n : undefined;
 }
 
+/** Vacío cuenta como 0; texto inválido o negativo queda `undefined`. */
+export function moneyInputToAmount(raw: string): number | undefined {
+  if (raw.trim() === '') {
+    return 0;
+  }
+  return parseRateMoneyInput(raw);
+}
+
+export function destinationRatePriceManeuverKey(
+  row: Pick<DestinationRatePriceDraft, 'operationConfigurationId' | 'operationConfigurationName'>,
+): string {
+  return (
+    row.operationConfigurationId.trim() ||
+    row.operationConfigurationName.trim().toLowerCase()
+  );
+}
+
+export function fillEmptyRateMoneyFields(
+  row: DestinationRatePriceDraft,
+): { ok: true; row: DestinationRatePriceDraft } | { ok: false; message: string } {
+  const clientCharge = moneyInputToAmount(row.clientCharge);
+  const operatorPaymentEstimate = moneyInputToAmount(row.operatorPaymentEstimate);
+  const estimatedTollAmount = moneyInputToAmount(row.estimatedTollAmount);
+  const perDiemAmount = moneyInputToAmount(row.perDiemAmount);
+  if (
+    clientCharge === undefined ||
+    operatorPaymentEstimate === undefined ||
+    estimatedTollAmount === undefined ||
+    perDiemAmount === undefined
+  ) {
+    return { ok: false, message: 'Revisa tarifa, operador, casetas y viáticos.' };
+  }
+  return {
+    ok: true,
+    row: {
+      ...row,
+      clientCharge: String(clientCharge),
+      operatorPaymentEstimate: String(operatorPaymentEstimate),
+      estimatedTollAmount: String(estimatedTollAmount),
+      perDiemAmount: String(perDiemAmount),
+    },
+  };
+}
+
+export function canAppendDestinationRatePriceRow(
+  rows: readonly DestinationRatePriceDraft[],
+): boolean {
+  const last = rows[rows.length - 1];
+  return last != null && destinationRatePriceManeuverKey(last).length > 0;
+}
+
+export function appendDestinationRatePriceInputRow(
+  rows: readonly DestinationRatePriceDraft[],
+): { ok: true; rows: DestinationRatePriceDraft[] } | { ok: false; message: string } {
+  if (!canAppendDestinationRatePriceRow(rows)) {
+    return { ok: false, message: 'Indica el tipo de maniobra.' };
+  }
+  const last = rows[rows.length - 1]!;
+  const filled = fillEmptyRateMoneyFields(last);
+  if (!filled.ok) {
+    return filled;
+  }
+  return {
+    ok: true,
+    rows: [...rows.slice(0, -1), filled.row, createEmptyPriceDraft()],
+  };
+}
+
+export function destinationRatePriceDraftsForSave(
+  priceDrafts: readonly DestinationRatePriceDraft[],
+): DestinationRatePriceDraft[] {
+  return priceDrafts.filter((row) => destinationRatePriceManeuverKey(row).length > 0);
+}
+
 export function createEmptyPriceDraft(
   rowKey = `dr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 ): DestinationRatePriceDraft {
@@ -29,6 +103,7 @@ export function createEmptyPriceDraft(
     clientCharge: '',
     operatorPaymentEstimate: '',
     estimatedTollAmount: '',
+    perDiemAmount: '',
     notes: '',
   };
 }
@@ -44,6 +119,7 @@ export function priceDraftsFromRate(rate: DestinationRate): DestinationRatePrice
     clientCharge: String(p.clientCharge),
     operatorPaymentEstimate: String(p.operatorPaymentEstimate),
     estimatedTollAmount: String(p.estimatedTollAmount),
+    perDiemAmount: String(p.perDiemAmount ?? 0),
     notes: p.notes ?? '',
   }));
 }
@@ -71,12 +147,13 @@ export function validateDestinationRateForm(params: {
   if (!params.cityMunicipality.trim()) {
     return 'La ciudad o municipio es obligatoria.';
   }
-  if (params.priceDrafts.length === 0) {
+  const priceDrafts = destinationRatePriceDraftsForSave(params.priceDrafts);
+  if (priceDrafts.length === 0) {
     return 'Agrega al menos un tipo de maniobra con tarifa.';
   }
 
   const used = new Set<string>();
-  for (const row of params.priceDrafts) {
+  for (const row of priceDrafts) {
     const configKey =
       row.operationConfigurationId.trim() ||
       row.operationConfigurationName.trim().toLowerCase();
@@ -88,11 +165,17 @@ export function validateDestinationRateForm(params: {
     }
     used.add(configKey);
 
-    const charge = parseRateMoneyInput(row.clientCharge);
-    const operator = parseRateMoneyInput(row.operatorPaymentEstimate);
-    const toll = parseRateMoneyInput(row.estimatedTollAmount);
-    if (charge === undefined || operator === undefined || toll === undefined) {
-      return 'Revisa cobro, pago operador y casetas aprox. en cada fila.';
+    const charge = moneyInputToAmount(row.clientCharge);
+    const operator = moneyInputToAmount(row.operatorPaymentEstimate);
+    const toll = moneyInputToAmount(row.estimatedTollAmount);
+    const perDiem = moneyInputToAmount(row.perDiemAmount);
+    if (
+      charge === undefined ||
+      operator === undefined ||
+      toll === undefined ||
+      perDiem === undefined
+    ) {
+      return 'Revisa tarifa, operador, casetas y viáticos en cada fila.';
     }
   }
   return validateDestinationRateEstimatedTimesInput({
@@ -141,13 +224,14 @@ function appendEstimatedTimesToPayload(
 export function buildDestinationRatePricesPayload(
   priceDrafts: readonly DestinationRatePriceDraft[],
 ): DestinationRatePriceInput[] {
-  return priceDrafts.map((row) => ({
+  return destinationRatePriceDraftsForSave(priceDrafts).map((row) => ({
     ...(row.operationConfigurationId.trim()
       ? { operationConfigurationId: row.operationConfigurationId.trim() }
       : { operationConfigurationName: row.operationConfigurationName.trim() }),
     clientCharge: parseRateMoneyInput(row.clientCharge) ?? 0,
     operatorPaymentEstimate: parseRateMoneyInput(row.operatorPaymentEstimate) ?? 0,
     estimatedTollAmount: parseRateMoneyInput(row.estimatedTollAmount) ?? 0,
+    perDiemAmount: parseRateMoneyInput(row.perDiemAmount) ?? 0,
     notes: row.notes.trim() || undefined,
   }));
 }

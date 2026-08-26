@@ -49,7 +49,11 @@ import {
   localityKey,
   normalizeMxPostalCodeDigits,
 } from '@features/trips/utils/mx-postal-settlement';
-import { formatRouteKmEsMx } from '@features/trips/utils/maniobra-route-display';
+import {
+  formatRouteKmEsMx,
+  formatRouteKmInputValue,
+  parseRouteKmOneWayInput,
+} from '@features/trips/utils/maniobra-route-display';
 import { tripOperationalKm } from '@features/trips/utils/trip-operational-km';
 import { operatorLicenseExpiresLabelFromIso } from '@features/trips/utils/operator-license-display';
 import { TripsFormCatalogService } from '@features/trips/services/trips-form-catalog.service';
@@ -102,6 +106,7 @@ import { computePlannedScheduleSuggestionFromRate } from '@features/trips/utils/
 import type { FuelEstimateResponse } from '@shared/models/api/api-trips-fuel.model';
 import {
   buildFuelEstimateRequest,
+  FUEL_ESTIMATE_DEBOUNCE_MS,
   formatFuelEstimateLiters,
   formatFuelEstimateMoney,
   fuelEstimateInputsFingerprint,
@@ -212,12 +217,12 @@ export class TripsNewDrawerComponent {
   readonly autoRecognitionEnabled = computed(() => this.session.tripAssistPrefillEnabled());
   readonly dieselLitersPlaceholder = computed(() =>
     this.dieselControlEnabled()
-      ? 'Se estima al tener distancia y datos de carga'
+      ? 'Se estima al tener la distancia'
       : 'Captura manualmente',
   );
   readonly dieselAmountPlaceholder = computed(() =>
     this.dieselControlEnabled()
-      ? 'Se estima al tener distancia y datos de carga'
+      ? 'Se calcula con la tarifa base de diesel'
       : 'Captura manualmente',
   );
   /** Si el usuario editó diesel tras la última estimación automática. */
@@ -237,10 +242,12 @@ export class TripsNewDrawerComponent {
   private lastAutoOperatorQuota = '';
   private lastAutoClientCharge = '';
   private lastAutoCasetasAmount = '';
+  private lastAutoPerDiemAmount = '';
   private applyingDestinationRateSuggestion = false;
   readonly operatorQuotaSuggestionUi = signal<'none' | 'auto' | 'manual'>('none');
   readonly clientChargeSuggestionUi = signal<'none' | 'auto' | 'manual'>('none');
   readonly casetasSuggestionUi = signal<'none' | 'auto' | 'manual'>('none');
+  readonly perDiemSuggestionUi = signal<'none' | 'auto' | 'manual'>('none');
   readonly destinationRateMatched = signal(false);
   readonly destinationRateChargeRecognized = signal(false);
   readonly originOperationalCenterId = model('');
@@ -434,8 +441,10 @@ export class TripsNewDrawerComponent {
   readonly originCoords = signal<LatLon | null>(null);
   readonly destinationCoords = signal<LatLon | null>(null);
 
-  /** Distancia por carretera (OSRM), solo ida. */
+  /** Distancia por carretera (OSRM o ajuste manual), solo ida. */
   readonly routeKm = signal<number | null>(null);
+  /** Texto del input de km de ida (sugerencia OSRM o captura del usuario). */
+  readonly routeKmInput = signal('');
   readonly routeLoading = signal(false);
   /** Solo fallo de OSRM (ruta), no de Photon. */
   readonly routeFailed = signal(false);
@@ -595,14 +604,20 @@ export class TripsNewDrawerComponent {
     return !!(oS && dS);
   });
 
-  /** Distancia OSRM (solo ida). */
-  readonly routeDistanceOneWayDisplayValue = computed(() => {
+  readonly routeKmInputSuffix = computed(() => (this.routeLoading() ? '' : 'km'));
+
+  readonly routeKmInputDisplayValue = computed(() =>
+    this.routeLoading() ? 'Calculando…' : undefined,
+  );
+
+  /** Distancia total (ida + regreso = ruta × 2). */
+  readonly operationalDistanceDisplayValue = computed(() => {
     if (this.routeLoading()) {
       return 'Calculando…';
     }
     const km = this.routeKm();
-    if (km !== null) {
-      return `${formatRouteKmEsMx(km)} km`;
+    if (km !== null && Number.isFinite(km) && km > 0) {
+      return formatRouteKmEsMx(tripOperationalKm({ routeDistanceKm: km }));
     }
     if (this.routeFailed() && this.originCoords() && this.destinationCoords()) {
       return 'No disponible (ruta)';
@@ -616,25 +631,12 @@ export class TripsNewDrawerComponent {
     return '';
   });
 
-  /** Distancia total (ida + regreso = ruta × 2). */
-  readonly operationalDistanceDisplayValue = computed(() => {
+  readonly operationalDistanceInputSuffix = computed(() => {
     if (this.routeLoading()) {
-      return 'Calculando…';
+      return '';
     }
     const km = this.routeKm();
-    if (km !== null && Number.isFinite(km) && km > 0) {
-      return `${formatRouteKmEsMx(tripOperationalKm({ routeDistanceKm: km }))} km`;
-    }
-    if (this.routeFailed() && this.originCoords() && this.destinationCoords()) {
-      return 'No disponible (ruta)';
-    }
-    if (
-      this.routePairReady() &&
-      (this.originGeocodeFailed() || this.destinationGeocodeFailed())
-    ) {
-      return 'No disponible (ubicación)';
-    }
-    return '';
+    return km != null && Number.isFinite(km) && km > 0 ? 'km' : '';
   });
 
   /** Local si distancia ≤ 25 km; Foránea si mayor a 25 km (ruta OSRM). */
@@ -772,7 +774,7 @@ export class TripsNewDrawerComponent {
       toObservable(this.originCoords),
       toObservable(this.destinationCoords),
     ]).pipe(
-      debounceTime(600),
+      debounceTime(FUEL_ESTIMATE_DEBOUNCE_MS),
       map(
         ([
           distanceKm,
@@ -997,7 +999,7 @@ export class TripsNewDrawerComponent {
             if (!isValidLatLon(this.originCoords())) {
               this.originCoords.set(null);
             }
-            this.routeKm.set(null);
+            this.applyRouteKm(null);
             this.routeLoading.set(false);
             this.routeFailed.set(false);
             this.originGeocodeFailed.set(false);
@@ -1060,7 +1062,7 @@ export class TripsNewDrawerComponent {
             if (!isValidLatLon(this.destinationCoords())) {
               this.destinationCoords.set(null);
             }
-            this.routeKm.set(null);
+            this.applyRouteKm(null);
             this.routeLoading.set(false);
             this.routeFailed.set(false);
             this.destinationGeocodeFailed.set(false);
@@ -1108,7 +1110,7 @@ export class TripsNewDrawerComponent {
         distinctUntilChanged(([oa, da], [ob, db]) => sameLatLon(oa, ob) && sameLatLon(da, db)),
         tap(([o, d]) => {
           if (!isValidLatLon(o) || !isValidLatLon(d)) {
-            this.routeKm.set(null);
+            this.applyRouteKm(null);
             this.routeLoading.set(false);
           }
         }),
@@ -1137,7 +1139,7 @@ export class TripsNewDrawerComponent {
         tap((r) => {
           if (r !== null && typeof r === 'object' && 'km' in r) {
             const box = r as { km: number | null; failed: boolean };
-            this.routeKm.set(box.km);
+            this.applyRouteKm(box.km);
             this.routeFailed.set(box.failed);
           }
         }),
@@ -1447,7 +1449,13 @@ export class TripsNewDrawerComponent {
       this.destinationCoords.set(null);
       this.destinationGeocodeFailed.set(this.routePairReady());
     }
-    this.routeKm.set(null);
+    this.applyRouteKm(null);
+  }
+
+  /** Aplica km de ida (OSRM, tarifa o reset) y sincroniza el input. */
+  private applyRouteKm(km: number | null): void {
+    this.routeKm.set(km);
+    this.routeKmInput.set(formatRouteKmInputValue(km));
   }
 
   private applyPendingLocalityAfterSepomex(
@@ -1550,17 +1558,23 @@ export class TripsNewDrawerComponent {
     return routeEndpointFingerprint(cp, key, coords);
   }
 
-  /** Valores iniciales desde sesión o cliente; el usuario puede editar CP/localidad después. */
+  /** Litros del estimado; monto = litros × tarifa base de diesel de la empresa. */
   private applyDieselEstimate(res: FuelEstimateResponse): void {
     const liters = formatFuelEstimateLiters(res.estimatedLiters);
-    const amount = formatFuelEstimateMoney(res.estimatedDieselCost);
+    const currentTariff = this.dieselPricePerLiter();
     if (
+      (currentTariff == null || currentTariff <= 0) &&
       Number.isFinite(res.dieselPricePerLiter) &&
       res.dieselPricePerLiter > 0
     ) {
       this.dieselPricePerLiter.set(res.dieselPricePerLiter);
       this.lastAutoDieselPricePerLiter = res.dieselPricePerLiter;
     }
+    const tariff = this.dieselPricePerLiter();
+    const amount =
+      tariff != null && Number.isFinite(tariff) && tariff > 0
+        ? formatFuelEstimateMoney(res.estimatedLiters * tariff)
+        : formatFuelEstimateMoney(res.estimatedDieselCost);
     this.applyingDieselEstimate = true;
     this.dieselLiters.set(liters);
     this.dieselAmount.set(amount);
@@ -1595,7 +1609,7 @@ export class TripsNewDrawerComponent {
     this.originCp.set('');
     this.originCpLoading.set(false);
     this.routeCacheActive.set(false);
-    this.routeKm.set(null);
+    this.applyRouteKm(null);
     this.routeLoading.set(false);
     this.routeFailed.set(false);
   }
@@ -1928,6 +1942,27 @@ export class TripsNewDrawerComponent {
     this.maybeToastPlannedScheduleOrder();
   }
 
+  onRouteKmTyped(raw: string): void {
+    this.routeKmInput.set(raw);
+    const parsed = parseRouteKmOneWayInput(raw);
+    if (parsed == null) {
+      return;
+    }
+    this.routeKm.set(parsed);
+    this.routeFailed.set(false);
+  }
+
+  onRouteKmBlur(): void {
+    const parsed = parseRouteKmOneWayInput(this.routeKmInput());
+    if (parsed != null) {
+      this.routeKm.set(parsed);
+      this.routeKmInput.set(formatRouteKmInputValue(parsed));
+      this.routeFailed.set(false);
+      return;
+    }
+    this.routeKmInput.set(formatRouteKmInputValue(this.routeKm()));
+  }
+
   onDieselLitersBlur(): void {
     this.markDieselManualOverrideIfEdited();
     this.toastIfInvalidNonNegativeNumber(this.dieselLiters(), 'Diesel (litros)');
@@ -1949,6 +1984,7 @@ export class TripsNewDrawerComponent {
   }
 
   onPerDiemAmountBlur(): void {
+    this.markDestinationRateManualOverrideIfEdited();
     this.toastIfInvalidOptionalNonNegativeNumber(this.perDiemAmount(), 'Viáticos');
   }
 
@@ -2163,8 +2199,14 @@ export class TripsNewDrawerComponent {
       this.casetasSuggestionUi.set('auto');
     }
 
+    if (fields.perDiemAmount != null) {
+      this.perDiemAmount.set(fields.perDiemAmount);
+      this.lastAutoPerDiemAmount = fields.perDiemAmount;
+      this.perDiemSuggestionUi.set('auto');
+    }
+
     if (destinationRateHasRouteCache(rate)) {
-      this.routeKm.set(rate.routeDistanceKm ?? null);
+      this.applyRouteKm(rate.routeDistanceKm ?? null);
       this.routeFailed.set(false);
       this.routeLoading.set(false);
       this.routeCacheActive.set(true);
@@ -2181,9 +2223,11 @@ export class TripsNewDrawerComponent {
       operatorQuota: this.operatorQuota(),
       clientCharge: this.clientCharge(),
       casetasAmount: this.casetasAmount(),
+      perDiemAmount: this.perDiemAmount(),
       lastAutoOperatorQuota: this.lastAutoOperatorQuota,
       lastAutoClientCharge: this.lastAutoClientCharge,
       lastAutoCasetasAmount: this.lastAutoCasetasAmount,
+      lastAutoPerDiemAmount: this.lastAutoPerDiemAmount,
     });
     if (detection.operatorManual) {
       this.operatorQuotaSuggestionUi.set('manual');
@@ -2194,6 +2238,9 @@ export class TripsNewDrawerComponent {
     if (detection.casetasManual) {
       this.casetasSuggestionUi.set('manual');
     }
+    if (detection.perDiemManual) {
+      this.perDiemSuggestionUi.set('manual');
+    }
     if (detection.locked) {
       this.destinationRateSuggestionLocked.set(true);
     }
@@ -2203,12 +2250,14 @@ export class TripsNewDrawerComponent {
     this.operatorQuotaSuggestionUi.set('none');
     this.clientChargeSuggestionUi.set('none');
     this.casetasSuggestionUi.set('none');
+    this.perDiemSuggestionUi.set('none');
     if (this.lastAutoClientCharge !== '') {
       this.clientCharge.set('');
     }
     this.lastAutoOperatorQuota = '';
     this.lastAutoClientCharge = '';
     this.lastAutoCasetasAmount = '';
+    this.lastAutoPerDiemAmount = '';
   }
 
   private resetPlannedScheduleSuggestionForContextChange(): void {
@@ -2280,29 +2329,6 @@ export class TripsNewDrawerComponent {
     ) {
       this.plannedScheduleSuggestionUi.set('manual');
     }
-  }
-
-  dieselDerivedState(field: 'liters' | 'amount'): 'none' | 'pending' | 'ready' {
-    if (!this.dieselControlEnabled()) {
-      return 'none';
-    }
-    if (this.dieselAssistAuto(field)) {
-      return 'ready';
-    }
-    return 'pending';
-  }
-
-  dieselAssistAuto(field: 'liters' | 'amount'): boolean {
-    if (!this.dieselControlEnabled()) {
-      return false;
-    }
-    const current = stripGroupedNumberInput(
-      field === 'liters' ? this.dieselLiters() : this.dieselAmount(),
-    );
-    const auto = stripGroupedNumberInput(
-      field === 'liters' ? this.lastAutoDieselLiters : this.lastAutoDieselAmount,
-    );
-    return auto !== '' && current === auto;
   }
 
   casetasAssistAuto(): boolean {

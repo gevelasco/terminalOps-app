@@ -40,6 +40,7 @@ describe('resolveManeuverDestinationRate', () => {
           clientCharge: 12000,
           operatorPaymentEstimate: 3000,
           estimatedTollAmount: 500,
+          perDiemAmount: 0,
         },
       ],
     });
@@ -77,6 +78,7 @@ describe('suggestedClientChargeFromDestinationRate', () => {
           clientCharge: 8000,
           operatorPaymentEstimate: 2000,
           estimatedTollAmount: 400,
+          perDiemAmount: 0,
         },
       ],
     });
@@ -98,6 +100,7 @@ describe('findDestinationRatePriceByOperationCode', () => {
           clientCharge: 15000,
           operatorPaymentEstimate: 4000,
           estimatedTollAmount: 600,
+          perDiemAmount: 0,
         },
       ],
     });

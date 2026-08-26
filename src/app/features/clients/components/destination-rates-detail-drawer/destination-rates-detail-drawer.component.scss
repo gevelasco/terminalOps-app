@@ -1,3 +1,7 @@
+:host ::ng-deep .destination-rates-detail-drawer__panel.to-side-drawer__panel--wide {
+  width: min(38rem, 100vw);
+}
+
 .destination-rates-detail-drawer__rate-head {
   display: flex;
   flex-direction: column;

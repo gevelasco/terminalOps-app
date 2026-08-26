@@ -40,6 +40,7 @@ export interface DestinationRatePrice {
   clientCharge: number;
   operatorPaymentEstimate: number;
   estimatedTollAmount: number;
+  perDiemAmount: number;
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -51,6 +52,7 @@ export interface DestinationRatePriceInput {
   clientCharge: number;
   operatorPaymentEstimate: number;
   estimatedTollAmount: number;
+  perDiemAmount: number;
   notes?: string;
 }
 
@@ -80,5 +82,6 @@ export interface DestinationRatePriceDraft {
   clientCharge: string;
   operatorPaymentEstimate: string;
   estimatedTollAmount: string;
+  perDiemAmount: string;
   notes: string;
 }

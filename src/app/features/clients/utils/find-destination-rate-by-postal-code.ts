@@ -153,6 +153,20 @@ export function suggestedEstimatedTollFromDestinationRate(
   return price.estimatedTollAmount;
 }
 
+export function suggestedPerDiemFromDestinationRate(
+  rate: DestinationRate,
+  operationConfigurationCode: string,
+): number | null {
+  const price = findDestinationRatePriceByOperationCode(
+    rate,
+    operationConfigurationCode,
+  );
+  if (!price || price.perDiemAmount <= 0) {
+    return null;
+  }
+  return price.perDiemAmount;
+}
+
 export function destinationRateHasRouteCache(rate: DestinationRate): boolean {
   return rate.routeDistanceKm != null && rate.routeDistanceKm > 0;
 }

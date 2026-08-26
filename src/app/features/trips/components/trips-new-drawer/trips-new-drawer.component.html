@@ -128,23 +128,29 @@
       </div>
     </div>
     <div class="maniobra-drawer__grid3">
-      <to-display-field
+      <to-input
         label="Distancia de ruta (ida)"
-        variant="metric"
-        [value]="routeDistanceOneWayDisplayValue()"
-        placeholder="Calculado vía OSRM"
+        placeholder="Sugerido por OSRM"
+        [suffix]="routeKmInputSuffix()"
+        [groupThousands]="true"
+        [disabled]="routeLoading()"
+        [displayValue]="routeKmInputDisplayValue()"
+        [value]="routeKmInput()"
+        (valueChange)="onRouteKmTyped($event)"
+        (blurNotify)="onRouteKmBlur()"
       />
-      <to-display-field
+      <to-input
         label="Distancia total"
-        variant="metric"
-        [value]="operationalDistanceDisplayValue()"
         placeholder="Ruta × 2"
+        [suffix]="operationalDistanceInputSuffix()"
+        [disabled]="true"
+        [displayValue]="operationalDistanceDisplayValue()"
       />
-      <to-display-field
+      <to-input
         label="Tipo de maniobra"
-        variant="metric"
-        [value]="maneuverKindInputValue()"
         placeholder="Local o foránea"
+        [disabled]="true"
+        [displayValue]="maneuverKindInputValue()"
       />
     </div>
     <to-input
@@ -419,7 +425,6 @@
         [placeholder]="dieselLitersPlaceholder()"
         prefix="L"
         [groupThousands]="true"
-        [derivedState]="dieselDerivedState('liters')"
         [(value)]="dieselLiters"
         (blurNotify)="onDieselLitersBlur()"
       />
@@ -428,7 +433,6 @@
         [placeholder]="dieselAmountPlaceholder()"
         prefix="$"
         [groupThousands]="true"
-        [derivedState]="dieselDerivedState('amount')"
         [(value)]="dieselAmount"
         (blurNotify)="onDieselAmountBlur()"
       />

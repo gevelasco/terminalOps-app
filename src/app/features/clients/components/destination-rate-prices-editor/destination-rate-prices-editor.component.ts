@@ -8,8 +8,10 @@ import {
 import { ToastService } from '@core/notifications/toast.service';
 import { OperationConfigurationsFeatureService } from '@features/clients/services/operation-configurations.service';
 import {
+  appendDestinationRatePriceInputRow,
+  canAppendDestinationRatePriceRow,
   createEmptyPriceDraft,
-  parseRateMoneyInput,
+  destinationRatePriceManeuverKey,
 } from '@features/clients/utils/destination-rate-payload';
 import type { DestinationRatePriceDraft } from '@shared/models/destination-rate.models';
 import { ToButtonComponent } from '@shared/ui/to-button/to-button.component';
@@ -52,35 +54,43 @@ export class DestinationRatePricesEditorComponent {
     this.operationConfigs.configurations().map((c) => ({ id: c.id, name: c.name })),
   );
 
-  readonly usedConfigurationIds = computed(() => {
-    const ids = new Set<string>();
-    for (const row of this.priceDrafts()) {
-      const id = row.operationConfigurationId.trim();
-      if (id) {
-        ids.add(id);
-      }
-    }
-    return ids;
-  });
+  readonly canAddRow = computed(
+    () => !this.disabled() && canAppendDestinationRatePriceRow(this.priceDrafts()),
+  );
+
+  readonly rowsScroll = computed(() => this.priceDrafts().length > 3);
 
   availableOptionsForRow(row: DestinationRatePriceDraft): ToSelectOption[] {
-    const used = this.usedConfigurationIds();
+    const used = new Set(
+      this.priceDrafts()
+        .filter((item) => item.rowKey !== row.rowKey)
+        .map((item) => item.operationConfigurationId.trim())
+        .filter((id) => id.length > 0),
+    );
     return this.configurationOptions().filter(
       (opt) => opt.value === row.operationConfigurationId || !used.has(String(opt.value)),
     );
   }
 
   addRow(): void {
-    this.priceDrafts.update((rows) => [...rows, createEmptyPriceDraft()]);
+    if (this.disabled()) {
+      return;
+    }
+    const result = appendDestinationRatePriceInputRow(this.priceDrafts());
+    if (!result.ok) {
+      this.toast.show(result.message, 'warning');
+      return;
+    }
+    this.priceDrafts.set(result.rows);
   }
 
   removeRow(rowKey: string): void {
+    if (this.disabled()) {
+      return;
+    }
     this.priceDrafts.update((rows) => {
-      if (rows.length <= 1) {
-        this.toast.show('Debe existir al menos un tipo de maniobra.', 'warning');
-        return rows;
-      }
-      return rows.filter((r) => r.rowKey !== rowKey);
+      const next = rows.filter((r) => r.rowKey !== rowKey);
+      return next.length > 0 ? next : [createEmptyPriceDraft()];
     });
   }
 
@@ -100,7 +110,7 @@ export class DestinationRatePricesEditorComponent {
 
   updateField(
     rowKey: string,
-    field: 'clientCharge' | 'operatorPaymentEstimate' | 'estimatedTollAmount' | 'notes',
+    field: 'clientCharge' | 'operatorPaymentEstimate' | 'estimatedTollAmount' | 'perDiemAmount',
     value: string,
   ): void {
     this.priceDrafts.update((rows) =>
@@ -108,11 +118,11 @@ export class DestinationRatePricesEditorComponent {
     );
   }
 
-  rowHasValidAmounts(row: DestinationRatePriceDraft): boolean {
-    return (
-      parseRateMoneyInput(row.clientCharge) !== undefined &&
-      parseRateMoneyInput(row.operatorPaymentEstimate) !== undefined &&
-      parseRateMoneyInput(row.estimatedTollAmount) !== undefined
-    );
+  canRemoveRow(row: DestinationRatePriceDraft): boolean {
+    const rows = this.priceDrafts();
+    if (rows.length > 1) {
+      return true;
+    }
+    return destinationRatePriceManeuverKey(row).length > 0;
   }
 }

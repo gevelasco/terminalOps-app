@@ -38,6 +38,7 @@ describe('buildDestinationRateTableRows', () => {
             clientCharge: 1000,
             operatorPaymentEstimate: 0,
             estimatedTollAmount: 0,
+            perDiemAmount: 0,
           },
         ],
       }),
@@ -57,6 +58,7 @@ describe('buildDestinationRateTableRows', () => {
             clientCharge: 5000,
             operatorPaymentEstimate: 0,
             estimatedTollAmount: 0,
+            perDiemAmount: 0,
           },
           {
             id: 'p1b',
@@ -65,6 +67,7 @@ describe('buildDestinationRateTableRows', () => {
             clientCharge: 3000,
             operatorPaymentEstimate: 0,
             estimatedTollAmount: 0,
+            perDiemAmount: 0,
           },
         ],
       }),
