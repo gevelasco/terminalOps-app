@@ -40,6 +40,10 @@ export class DestinationRatePricesEditorComponent {
   private readonly toast = inject(ToastService);
   private readonly operationConfigs = inject(OperationConfigurationsFeatureService);
 
+  constructor() {
+    this.operationConfigs.loadOperationConfigurations();
+  }
+
   readonly priceDrafts = model<DestinationRatePriceDraft[]>([createEmptyPriceDraft()]);
   readonly disabled = model(false);
 

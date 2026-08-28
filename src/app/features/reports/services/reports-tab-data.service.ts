@@ -1,28 +1,13 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
-import {
-  ExpensesService,
-  type ExpenseCalendarItem,
-} from '@core/services/api/expenses';
 import { ReportsService } from '@core/services/api/reports';
-import {
-  buildDashboardUpcomingPayments,
-  dashboardUpcomingPaymentsRange,
-  type DashboardUpcomingPaymentRow,
-} from '@features/dashboard/utils/dashboard-upcoming-payments.util';
 import type { ReportsFilter } from '@features/reports/models/reports-view.models';
 import type { ReportsTabId } from '@features/reports/models/reports-view.models';
 import { reportsFilterCacheKey } from '@features/reports/utils/reports-filter-cache-key.util';
 import type { ReportsBalanceData } from '@shared/models/api/api-reports-balance.model';
 import type { ReportsFleetData } from '@shared/models/api/api-reports-fleet.model';
 import type { ReportsManiobrasData } from '@shared/models/api/api-reports-maniobras.model';
-import { catchError, defer, forkJoin, map, Observable, of, shareReplay, throwError } from 'rxjs';
+import { defer, Observable, shareReplay, throwError } from 'rxjs';
 import { SessionService } from '@core/services/state/session';
-
-export type ReportsBalanceBundle = {
-  balance: ReportsBalanceData;
-  upcomingPayments: DashboardUpcomingPaymentRow[];
-  calendarItems: ExpenseCalendarItem[];
-};
 
 type CachedStream<T> = {
   filterKey: string;
@@ -33,7 +18,6 @@ type CachedStream<T> = {
 export class ReportsTabDataService {
   private readonly destroyRef = inject(DestroyRef);
   private readonly reportsApi = inject(ReportsService);
-  private readonly expensesApi = inject(ExpensesService);
   private readonly session = inject(SessionService);
 
   private balanceCache: CachedStream<ReportsBalanceData> | null = null;
@@ -60,39 +44,6 @@ export class ReportsTabDataService {
     return this.cachedTab('fleet', filter, this.fleetCache, (next) => {
       this.fleetCache = next;
     }, () => this.reportsApi.getFleet(filter));
-  }
-
-  /** Balance + calendario de pagos (un solo request al calendar endpoint). */
-  getBalanceBundle(filter: ReportsFilter): Observable<ReportsBalanceBundle> {
-    return defer(() => {
-      if (!this.session.companyId()?.trim()) {
-        return throwError(() => new Error('No hay empresa en sesión'));
-      }
-
-      const range = dashboardUpcomingPaymentsRange();
-
-      const fromDate = new Date(filter.fromYear, filter.fromMonth - 1 - 12, 1, 12, 0, 0, 0);
-      const lookbackFrom = `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(2, '0')}-01`;
-
-      const lastDay = new Date(filter.toYear, filter.toMonth, 0).getDate();
-      const fullMonthTo = `${filter.toYear}-${String(filter.toMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-
-      const from = lookbackFrom < range.fetchFrom ? lookbackFrom : range.fetchFrom;
-      const to = fullMonthTo > range.to ? fullMonthTo : range.to;
-
-      return forkJoin({
-        balance: this.getBalance(filter),
-        calendarItems: this.expensesApi
-          .getAllExpensesCalendarItems({ from, to })
-          .pipe(catchError(() => of([] as ExpenseCalendarItem[]))),
-      }).pipe(
-        map(({ balance, calendarItems }) => ({
-          balance,
-          calendarItems,
-          upcomingPayments: buildDashboardUpcomingPayments(calendarItems, range),
-        })),
-      );
-    });
   }
 
   clearCache(): void {

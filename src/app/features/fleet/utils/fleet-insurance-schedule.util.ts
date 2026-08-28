@@ -1,27 +1,18 @@
 import type { Expense } from '@shared/models/logistics.models';
-import { expenseIncurredDateInput } from '@features/expenses/utils/expenses-form.util';
 import {
   INSURANCE_PAYMENT_CONFIRM_WINDOW_DAYS,
   cadenceToMonths,
   type FleetInsurancePaymentMeta,
 } from './fleet-insurance-payment.util';
 import {
-  fleetCycleIsPaid,
-  fleetPaymentExpenseForCycle,
-} from './fleet-payment-schedule-match.util';
+  buildLedgerCoverageSchedule,
+  coverageComplianceFromSchedule,
+  type LedgerCoverageScheduleRow,
+  type LedgerCoverageScheduleRowStatus,
+} from './fleet-ledger-coverage-schedule.util';
 
-export type InsuranceScheduleRowStatus = 'paid' | 'future' | 'due' | 'overdue';
-
-export type InsuranceScheduleRow = {
-  index: number;
-  label: string;
-  dueDate: string;
-  status: InsuranceScheduleRowStatus;
-  expenseId?: string;
-  paidDate?: string;
-  paidAmount?: number;
-  canConfirm: boolean;
-};
+export type InsuranceScheduleRowStatus = LedgerCoverageScheduleRowStatus;
+export type InsuranceScheduleRow = LedgerCoverageScheduleRow;
 
 function parseYmd(iso: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
@@ -101,104 +92,21 @@ function policyYearStart(contractDate: Date, today: Date): Date {
   return addMonths(contractDate, yearIndex * 12);
 }
 
-function scheduleLabel(index: number, cadenceMonths: number): string {
-  if (cadenceMonths === 1) {
-    return `Mes ${index}`;
-  }
-  if (cadenceMonths === 3) {
-    return `T${index}`;
-  }
-  return `Pago ${index}`;
-}
-
-function isInsurancePaymentExpense(e: Expense): boolean {
-  const desc = (e.description ?? '').trim();
-  return (
-    e.kind === 'insurance' &&
-    (desc.startsWith('Pago de póliza') || desc.startsWith('Contratación de póliza'))
-  );
-}
-
-function expensePaidYmd(e: Expense): string {
-  if (e.paidAt) {
-    return expenseIncurredDateInput(e.paidAt);
-  }
-  return expenseIncurredDateInput(e.incurredAt);
-}
-
 export function buildInsurancePaymentSchedule(params: {
   meta: FleetInsurancePaymentMeta | undefined;
   expenses: readonly Expense[];
   today?: Date;
 }): InsuranceScheduleRow[] {
-  const meta = params.meta;
-  const cadenceMonths = cadenceToMonths(meta?.insurancePaymentCadence);
-  const periodCount = insuranceSchedulePeriodCount(meta?.insurancePaymentCadence);
-  const contract = meta?.insuranceContractDate?.trim();
-  if (!contract || periodCount === 0) {
+  if (!showInsurancePaymentSchedule(params.meta?.insurancePaymentCadence)) {
     return [];
   }
-
-  const contractDate = parseYmd(contract);
-  if (!contractDate) {
-    return [];
-  }
-
-  const today = startOfToday(params.today ?? new Date());
-  const yearStart = policyYearStart(contractDate, today);
-  const stepMonths = cadenceMonths === 1 ? 1 : 3;
-
-  const paymentExpenses = params.expenses.filter(isInsurancePaymentExpense);
-  const lastPaymentDate = meta?.insuranceLastPaymentDate?.trim();
-
-  const rows: InsuranceScheduleRow[] = [];
-  let nextUnpaidIndex = -1;
-
-  for (let i = 0; i < periodCount; i += 1) {
-    const due = addMonths(yearStart, i * stepMonths);
-    const dueDate = formatYmd(due);
-    const matched = fleetPaymentExpenseForCycle(
-      dueDate,
-      lastPaymentDate,
-      paymentExpenses,
-      i + 1,
-    );
-    const paid = fleetCycleIsPaid(dueDate, lastPaymentDate, matched);
-
-    let status: InsuranceScheduleRowStatus;
-    if (paid) {
-      status = 'paid';
-    } else if (due.getTime() < today.getTime()) {
-      status = 'overdue';
-    } else {
-      const daysUntil = Math.round((due.getTime() - today.getTime()) / 86400000);
-      status = daysUntil <= INSURANCE_PAYMENT_CONFIRM_WINDOW_DAYS ? 'due' : 'future';
-    }
-
-    if (!paid && nextUnpaidIndex < 0) {
-      nextUnpaidIndex = i;
-    }
-
-    rows.push({
-      index: i + 1,
-      label: scheduleLabel(i + 1, cadenceMonths),
-      dueDate,
-      status,
-      expenseId: matched?.id,
-      paidDate: paid && matched ? expensePaidYmd(matched) : undefined,
-      paidAmount: paid ? matched?.amount : undefined,
-      canConfirm: false,
-    });
-  }
-
-  if (nextUnpaidIndex >= 0) {
-    const row = rows[nextUnpaidIndex];
-    if (row.status === 'overdue' || row.status === 'due') {
-      row.canConfirm = true;
-    }
-  }
-
-  return rows;
+  return buildLedgerCoverageSchedule({
+    expenses: params.expenses,
+    isMatch: (expense) => expense.kind === 'insurance',
+    cadenceMonths: cadenceToMonths(params.meta?.insurancePaymentCadence),
+    confirmWindowDays: INSURANCE_PAYMENT_CONFIRM_WINDOW_DAYS,
+    today: params.today,
+  });
 }
 
 /** Vista compacta: pagados + próximo ciclo; un pendiente extra solo si el ciclo actual está por pagar o vencido. */
@@ -265,26 +173,5 @@ export function insurancePaymentCompliance(
     expenses: options?.expenses ?? [],
     today: options?.today,
   });
-  if (rows.length === 0) {
-    return null;
-  }
-
-  const nextUnpaid = rows.find((row) => row.status !== 'paid');
-  if (!nextUnpaid) {
-    return { bucket: 'ok', daysUntil: null };
-  }
-
-  const due = parseYmd(nextUnpaid.dueDate);
-  const today = startOfToday(options?.today ?? new Date());
-  const daysUntil = due
-    ? Math.round((due.getTime() - today.getTime()) / 86400000)
-    : null;
-
-  if (nextUnpaid.status === 'overdue') {
-    return { bucket: 'due', daysUntil };
-  }
-  if (nextUnpaid.status === 'due') {
-    return { bucket: 'soon', daysUntil };
-  }
-  return { bucket: 'ok', daysUntil };
+  return coverageComplianceFromSchedule(rows, options?.today);
 }

@@ -24,9 +24,15 @@ export type ClientPickerOption = {
   name: string;
 };
 
+export type ClientBalanceOverviewCardSummary = Pick<
+  ClientBalanceSummary,
+  'hasTrips' | 'completedCount' | 'receivable' | 'nextDueYmd' | 'upcomingPayments'
+>;
+
 export type ClientBalanceOverviewItem = {
   clientId: string;
-  summary: ClientBalanceSummary;
+  name: string;
+  summary: ClientBalanceOverviewCardSummary;
   commercialHealth: ClientCommercialHealth;
 };
 

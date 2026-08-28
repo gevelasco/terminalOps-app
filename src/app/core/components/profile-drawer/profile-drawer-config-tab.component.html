@@ -128,6 +128,40 @@
     </article>
 
     <article
+      class="profile-drawer__setting-row"
+      aria-labelledby="profile-setting-payment-reminder"
+    >
+      <div class="profile-drawer__setting-head">
+        <div class="profile-drawer__setting-copy">
+          <h4
+            id="profile-setting-payment-reminder"
+            class="profile-drawer__setting-title"
+          >
+            Aviso de pagos
+          </h4>
+          <p class="profile-drawer__setting-meta">
+            {{ paymentReminderStatusLabel() }}
+          </p>
+        </div>
+        <div class="profile-drawer__provision-field">
+          <to-input
+            label="Días antes de notificación"
+            type="text"
+            placeholder="5"
+            suffix="días"
+            [(value)]="draftPaymentReminderDays"
+            [disabled]="saving()"
+          />
+        </div>
+      </div>
+      <p class="profile-drawer__setting-desc">
+        Avisa en notificaciones cuando un pago de seguro, GPS, verificación,
+        financiamiento u operador está próximo a vencer o ya venció (mínimo 1,
+        máximo 15).
+      </p>
+    </article>
+
+    <article
       class="profile-drawer__setting-row profile-drawer__setting-row--policy"
       aria-labelledby="profile-setting-maintenance"
     >

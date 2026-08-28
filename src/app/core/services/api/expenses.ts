@@ -38,35 +38,11 @@ export interface ExpensesCalendarParams {
   to: string;
   page?: number;
   limit?: number;
+  /** Una sola ventana de calendario; no paginar. */
+  all?: boolean;
 }
 
-export type ExpenseCalendarEntryType = 'actual' | 'projected';
-
-export interface ExpenseCalendarProjectedRow {
-  id: string;
-  source: string;
-  nature: 'committed' | 'scheduled';
-  kind: string;
-  rubroLabel: string;
-  conceptLabel: string;
-  amount: string | number;
-  currency: string;
-  dueDate: string;
-  tripId: number | null;
-  tripManeuverCode?: string;
-  relatedUnitId: number | null;
-  relatedEquipmentId: number | null;
-  relatedOperatorId: number | null;
-  fleetRelationLabel?: string;
-  relatedUnitLabel?: string;
-  relatedEquipmentLabel?: string;
-  relatedOperatorLabel?: string;
-  verificationScope?: string;
-  paymentMethod?: string;
-  vendor?: string;
-  invoiceRequired?: boolean;
-  hint: string;
-}
+export type ExpenseCalendarEntryType = 'actual';
 
 export interface ExpenseCalendarItem {
   entryType: ExpenseCalendarEntryType;
@@ -80,7 +56,6 @@ export interface ExpenseCalendarItem {
   statusLabel: string;
   expenseId?: number;
   expense?: Expense;
-  projected?: ExpenseCalendarProjectedRow;
 }
 
 export interface ExpenseCalendarMarker {
@@ -93,8 +68,6 @@ export interface ExpenseCalendarMarker {
 export interface ExpensesCalendarSummary {
   actualCount: number;
   actualTotalAmount: string | number;
-  projectedCount: number;
-  projectedTotalAmount: string | number;
   grandCount: number;
   grandTotalAmount: string | number;
 }
@@ -218,7 +191,6 @@ function mapExpensesCalendarResponse(res: ExpensesCalendarResponse): ExpensesCal
     summary: {
       ...res.summary,
       actualTotalAmount: parseMoneyAmount(res.summary.actualTotalAmount),
-      projectedTotalAmount: parseMoneyAmount(res.summary.projectedTotalAmount),
       grandTotalAmount: parseMoneyAmount(res.summary.grandTotalAmount),
     },
   };
@@ -319,11 +291,15 @@ export class ExpensesService {
     let httpParams = new HttpParams()
       .set('from', params.from)
       .set('to', params.to);
-    if (params.page != null) {
-      httpParams = httpParams.set('page', String(params.page));
-    }
-    if (params.limit != null) {
-      httpParams = httpParams.set('limit', String(params.limit));
+    if (params.all === true) {
+      httpParams = httpParams.set('all', 'true');
+    } else {
+      if (params.page != null) {
+        httpParams = httpParams.set('page', String(params.page));
+      }
+      if (params.limit != null) {
+        httpParams = httpParams.set('limit', String(params.limit));
+      }
     }
     return this.http
       .get<ExpensesCalendarResponse>(companyResourceUrl(companyId, 'expenses/calendar'), {
@@ -332,23 +308,12 @@ export class ExpensesService {
       .pipe(map((res) => mapExpensesCalendarResponse(res)));
   }
 
-  /** Consume todas las páginas del calendario para reportes que requieren el periodo completo. */
+  /** Ledger del periodo (dashboard, notificaciones). No pagina en el cliente. */
   getAllExpensesCalendarItems(
-    params: Omit<ExpensesCalendarParams, 'page' | 'limit'>,
+    params: Omit<ExpensesCalendarParams, 'page' | 'limit' | 'all'>,
   ): Observable<ExpenseCalendarItem[]> {
-    const loadPage = (page: number) =>
-      this.getExpensesCalendar({ ...params, page, limit: 100 });
-
-    return loadPage(1).pipe(
-      expand((response) =>
-        response.page * response.limit < response.total
-          ? loadPage(response.page + 1)
-          : EMPTY,
-      ),
-      reduce(
-        (items, response) => [...items, ...response.items],
-        [] as ExpenseCalendarItem[],
-      ),
+    return this.getExpensesCalendar({ ...params, all: true }).pipe(
+      map((response) => response.items),
     );
   }
 

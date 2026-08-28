@@ -81,7 +81,7 @@ export type ReportsBalancePayableItem = {
   beneficiary: string | null;
   installmentLabel: string;
   dueDate: string;
-  status: 'paid' | 'pending' | 'overdue';
+  status: 'pending' | 'overdue';
 };
 
 export type ReportsBalanceInsights = {
@@ -215,7 +215,9 @@ export function mapApiReportsBalance(raw: Record<string, unknown>): ReportsBalan
       beneficiary: row['beneficiary'] ? String(row['beneficiary']) : null,
       installmentLabel: String(row['installmentLabel'] ?? '1/1'),
       dueDate: String(row['dueDate'] ?? ''),
-      status: (String(row['status'] ?? 'pending') as 'paid' | 'pending' | 'overdue'),
+      status: String(row['status'] ?? 'pending') === 'overdue'
+        ? ('overdue' as const)
+        : ('pending' as const),
     }),
   );
 

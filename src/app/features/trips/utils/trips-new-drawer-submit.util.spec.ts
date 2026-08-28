@@ -138,6 +138,21 @@ describe('trips-new-drawer-submit.util', () => {
     ).toBe(false);
   });
 
+  it('rejects a unit that does not match the planned cargo type', () => {
+    const res = buildTripsNewDrawerSubmitResult(
+      baseSnap({
+        unitMatchesConfig: false,
+        unitConfigMismatchMessage:
+          'La unidad seleccionada no está disponible para el tipo de carga (contenedor) que se planea mover. Actualice el tipo de carga o la unidad.',
+      }),
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.message).toContain('tipo de carga');
+      expect(res.message).toContain('Actualice el tipo de carga o la unidad');
+    }
+  });
+
   it('requires both equipment ids for multi-equipment ops', () => {
     const res = buildTripsNewDrawerSubmitResult(
       baseSnap({

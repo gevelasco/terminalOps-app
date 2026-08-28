@@ -12,9 +12,6 @@ import { SessionService } from '@core/services/state/session';
 import { APP_MODULE_CODES } from '@shared/models/app-modules.models';
 import { ToastService } from '@core/notifications/toast.service';
 import { ExpensesService } from '@services/api/expenses';
-import { EquipmentService } from '@services/api/equipment';
-import { OperatorsService } from '@services/api/operators';
-import { UnitsService } from '@services/api/units';
 import {
   tripBitacoraEntriesSorted,
   tripIncidentPostedBy,
@@ -71,7 +68,6 @@ import {
 import { operatorLicenseExpiresLabelFromIso } from '@features/trips/utils/operator-license-display';
 import {
   formatTripEndpointFromParts,
-  tripAssignedUnitId,
   tripOperatorDisplayName,
   tripEquipmentDisplayAt,
   tripEquipmentPlateAt,
@@ -83,20 +79,14 @@ import {
 } from '@features/trips/utils/trip-operational-km';
 import { tripManeuverPaymentMethodLabel } from '@shared/catalogs/trip-client-payment-options';
 import { tripContainerTypeLabelMx } from '@shared/catalogs/trip-container-type-options';
-import { OperationalCentersFeatureService } from '@features/clients/services/operational-centers.service';
-import { DestinationRatesFeatureService } from '@features/clients/services/destination-rates.service';
-import { formatDestinationRateRouteSummary } from '@features/clients/utils/destination-rate-payload';
 import {
   Expense,
-  Equipment,
-  Operator,
   Trip,
   TripContainerType,
   TripDocumentKind,
   TripIncident,
   TripLoadType,
   TripStoredDocument,
-  Unit,
 } from '@shared/models/logistics.models';
 import { DateShortPipe } from '@shared/pipes/date-short.pipe';
 import { type ToSegmentTab } from '@shared/ui/to-segment-control/to-segment-control.component';
@@ -104,7 +94,6 @@ import { TripsService as TripsApiService } from '@core/services/api/trips';
 import { TripsFeatureService } from '@features/trips/services/trips.service';
 import { parseHttpApiErrorMessage } from '@shared/utils/http-api-error';
 import { isAdminRole } from '@shared/utils/access-control';
-import { resourceIdsEqual } from '@shared/utils/resource-id';
 import { isTripFollowUpLocked } from '@features/trips/utils/trip-post-completion-lock';
 
 export type TripsDetailTab = 'maneuver' | 'tracking' | 'settlement';
@@ -129,18 +118,8 @@ export class TripsDetailDrawerFacade {
   private readonly session = inject(SessionService);
   private readonly toast = inject(ToastService);
   private readonly expensesApi = inject(ExpensesService);
-  private readonly equipmentApi = inject(EquipmentService);
-  private readonly operatorsApi = inject(OperatorsService);
-  private readonly unitsApi = inject(UnitsService);
-  private readonly centersFeature = inject(OperationalCentersFeatureService);
-  private readonly destinationRatesFeature = inject(DestinationRatesFeatureService);
   readonly loadPlacesCatalog = inject(TripLoadPlacesFeatureService);
   private readonly destroyRef = inject(DestroyRef);
-
-  private readonly equipmentCatalog = signal<readonly Equipment[]>([]);
-  private equipmentCatalogLoadStarted = false;
-  private readonly liveOperator = signal<Operator | null>(null);
-  private readonly liveUnit = signal<Unit | null>(null);
 
   private dismissCallback: (() => void) | null = null;
   private closeCancelDialogCallback: (() => void) | null = null;
@@ -148,10 +127,10 @@ export class TripsDetailDrawerFacade {
   readonly trip = computed(() => this.tripsFeature.selectedTrip()!);
   readonly operatorName = computed(() => tripOperatorDisplayName(this.trip()));
   readonly operatorLicenseNumberDisplay = computed(() =>
-    snapshotTextOrDash(this.liveOperator()?.licenseNumber),
+    snapshotTextOrDash(this.trip().operatorLicenseNumber),
   );
   readonly operatorLicenseExpiresDisplay = computed(() => {
-    const iso = this.liveOperator()?.licenseExpiresOn?.trim() ?? '';
+    const iso = this.trip().operatorLicenseExpiresOn?.trim() ?? '';
     return snapshotTextOrDash(iso ? operatorLicenseExpiresLabelFromIso(iso) : '');
   });
   readonly originEndpointDisplay = computed(() =>
@@ -310,47 +289,6 @@ export class TripsDetailDrawerFacade {
       if (originalAt) {
         rememberEmptyDeliveryOriginalAt(t.id, originalAt);
       }
-      this.ensureEquipmentCatalogLoaded();
-      this.centersFeature.loadOperationalCenters();
-      this.destinationRatesFeature.loadDestinationRates();
-    });
-
-    effect((onCleanup) => {
-      const t = this.tripsFeature.selectedTrip();
-      const operatorId = t?.operatorId?.trim();
-      if (!operatorId) {
-        this.liveOperator.set(null);
-        return;
-      }
-      const current = this.liveOperator();
-      if (current && resourceIdsEqual(current.id, operatorId)) {
-        return;
-      }
-      this.liveOperator.set(null);
-      const sub = this.operatorsApi
-        .getOperatorById(operatorId)
-        .pipe(catchError(() => of(null)))
-        .subscribe((op) => this.liveOperator.set(op));
-      onCleanup(() => sub.unsubscribe());
-    });
-
-    effect((onCleanup) => {
-      const t = this.tripsFeature.selectedTrip();
-      const unitId = tripAssignedUnitId(t ?? { unitId: '', equipmentIds: [] }, this.equipmentCatalog());
-      if (!unitId) {
-        this.liveUnit.set(null);
-        return;
-      }
-      const current = this.liveUnit();
-      if (current && resourceIdsEqual(current.id, unitId)) {
-        return;
-      }
-      this.liveUnit.set(null);
-      const sub = this.unitsApi
-        .getUnitById(unitId)
-        .pipe(catchError(() => of(null)))
-        .subscribe((unit) => this.liveUnit.set(unit));
-      onCleanup(() => sub.unsubscribe());
     });
 
     effect((onCleanup) => {
@@ -995,11 +933,11 @@ export class TripsDetailDrawerFacade {
   }
 
   unitDisplay(): string {
-    return tripUnitDisplayCode(this.trip(), undefined, this.liveUnit());
+    return tripUnitDisplayCode(this.trip());
   }
 
   private unitPlateDisplay(): string {
-    return this.liveUnit()?.plate?.trim() || '—';
+    return this.trip().unitPlate?.trim() || '—';
   }
 
   private programmedByDisplay(): string {
@@ -1008,40 +946,33 @@ export class TripsDetailDrawerFacade {
   }
 
   private equipmentPlateAt(index: number): string {
-    return tripEquipmentPlateAt(this.trip(), index, this.equipmentCatalog());
+    return tripEquipmentPlateAt(this.trip(), index);
   }
 
   destinationRateDisplay(): string {
-    const raw = this.trip().destinationRateId;
+    const trip = this.trip();
+    const fromApi = trip.destinationRateSummary?.trim();
+    if (fromApi) {
+      return fromApi;
+    }
+    const raw = trip.destinationRateId;
     if (raw == null || raw === '') {
       return '';
     }
-    const id = String(raw).trim();
-    const rate = this.destinationRatesFeature.rates().find((r) => r.id === id);
-    if (rate) {
-      const summary = formatDestinationRateRouteSummary(rate);
-      const cp = rate.postalCode.trim();
+    const origin =
+      trip.originLocality?.trim() || trip.originCityMunicipality?.trim();
+    const dest =
+      trip.destinationLocality?.trim() || trip.destinationCityMunicipality?.trim();
+    const cp = trip.destinationPostalCode?.trim();
+    if (origin || dest) {
+      const summary = `${origin || 'Origen'} → ${dest || 'Destino'}`;
       return cp ? `${summary} · CP ${cp}` : summary;
     }
-    return `Tarifa ${id}`;
+    return `Tarifa ${String(raw).trim()}`;
   }
 
   originOperationalCenterDisplay(): string {
-    const t = this.trip();
-    const id = t.originOperationalCenterId?.trim();
-    if (!id) {
-      return '';
-    }
-    const center = this.centersFeature.centerById(id);
-    if (center) {
-      const name = center.name?.trim();
-      const code = center.code?.trim();
-      if (name && code) {
-        return `${name} (${code})`;
-      }
-      return name || code || id;
-    }
-    return id;
+    return this.trip().originOperationalCenterLabel?.trim() || '';
   }
 
   plannedScheduleDisplay(iso: string | null | undefined): string {
@@ -1050,8 +981,15 @@ export class TripsDetailDrawerFacade {
   }
 
   isFullTrip(): boolean {
+    const trip = this.trip();
+    if ((trip.operationConfigurationMaxEquipmentCount ?? 0) >= 2) {
+      return true;
+    }
+    if ((trip.equipmentIds?.length ?? 0) >= 2 || (trip.equipment?.length ?? 0) >= 2) {
+      return true;
+    }
     return this.opResolver.usesMultipleEquipment(
-      this.opResolver.contextFromTrip(this.trip()),
+      this.opResolver.contextFromTrip(trip),
     );
   }
 
@@ -1490,21 +1428,7 @@ export class TripsDetailDrawerFacade {
   }
 
   equipmentAt(index: number): string {
-    return tripEquipmentDisplayAt(this.trip(), index, this.equipmentCatalog());
-  }
-
-  private ensureEquipmentCatalogLoaded(): void {
-    if (this.equipmentCatalogLoadStarted) {
-      return;
-    }
-    this.equipmentCatalogLoadStarted = true;
-    this.equipmentApi
-      .getEquipmentList()
-      .pipe(
-        catchError(() => of([] as Equipment[])),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe((list) => this.equipmentCatalog.set(list));
+    return tripEquipmentDisplayAt(this.trip(), index);
   }
 
   bitacoraAuthorLabel(inc: TripIncident): string {

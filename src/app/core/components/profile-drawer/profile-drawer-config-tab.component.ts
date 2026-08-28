@@ -22,6 +22,10 @@ import { PlanEntitlementService } from '@shared/billing/plan-entitlement.service
 import {
   companyMaintenancePolicyModeFromSession,
   MAINTENANCE_DATE_PERIOD_OPTIONS,
+  PAYMENT_REMINDER_DAYS_DEFAULT,
+  PAYMENT_REMINDER_DAYS_MAX,
+  PAYMENT_REMINDER_DAYS_MIN,
+  normalizePaymentReminderDays,
   type CompanyMaintenancePolicyMode,
   type MaintenanceDatePeriod,
 } from '@shared/models/company-operational-settings.models';
@@ -101,6 +105,7 @@ export class ProfileDrawerConfigTabComponent {
   readonly draftControlPaymentMethod = model('cash');
   readonly draftDieselControlEnabled = model(true);
   readonly draftTripAssistPrefillEnabled = model(false);
+  readonly draftPaymentReminderDays = model(String(PAYMENT_REMINDER_DAYS_DEFAULT));
 
   readonly pendingDisableKind = signal<DisableConfirmKind | null>(null);
   private pendingMaintenanceMode = signal<CompanyMaintenancePolicyMode | null>(null);
@@ -153,6 +158,11 @@ export class ProfileDrawerConfigTabComponent {
       this.session.tripAssistPrefillEnabled(),
       this.session.tripAssistPrefillChangedAt(),
     );
+  }
+
+  paymentReminderStatusLabel(): string {
+    const days = this.session.paymentReminderDaysBefore();
+    return `${days} día${days === 1 ? '' : 's'} de anticipación`;
   }
 
   onMaintenancePolicySelect(mode: CompanyMaintenancePolicyMode): void {
@@ -317,6 +327,21 @@ export class ProfileDrawerConfigTabComponent {
       return;
     }
 
+    const reminderDays = Number(
+      this.draftPaymentReminderDays().trim().replace(/,/g, ''),
+    );
+    if (
+      !Number.isFinite(reminderDays) ||
+      reminderDays < PAYMENT_REMINDER_DAYS_MIN ||
+      reminderDays > PAYMENT_REMINDER_DAYS_MAX
+    ) {
+      this.toast.show(
+        `Indica los días de anticipación entre ${PAYMENT_REMINDER_DAYS_MIN} y ${PAYMENT_REMINDER_DAYS_MAX}.`,
+        'warning',
+      );
+      return;
+    }
+
     this.saving.set(true);
     this.companies
       .updateOperationalSettings(companyId, patch)
@@ -347,6 +372,13 @@ export class ProfileDrawerConfigTabComponent {
     }
     if (this.draftDieselControlEnabled() !== this.session.dieselControlEnabled()) {
       patch.dieselControlEnabled = this.draftDieselControlEnabled();
+    }
+
+    const reminderDays = normalizePaymentReminderDays(
+      this.draftPaymentReminderDays().trim().replace(/,/g, ''),
+    );
+    if (reminderDays !== this.session.paymentReminderDaysBefore()) {
+      patch.paymentReminderDaysBefore = reminderDays;
     }
 
     const savedPercent = this.session.tripAutoMaintenanceProvisionPercent();
@@ -451,6 +483,9 @@ export class ProfileDrawerConfigTabComponent {
       this.canUseDieselAutomatic() && this.session.dieselControlEnabled(),
     );
     this.draftTripAssistPrefillEnabled.set(this.session.tripAssistPrefillEnabled());
+    this.draftPaymentReminderDays.set(
+      String(this.session.paymentReminderDaysBefore()),
+    );
     const percent = this.session.tripAutoMaintenanceProvisionPercent();
     this.draftMaintenanceProvisionPercent.set(
       Number.isFinite(percent) ? String(percent) : '5',

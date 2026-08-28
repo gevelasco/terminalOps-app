@@ -114,7 +114,7 @@ export function buildOperatorsOverviewCard(operator: Operator): OperatorsOvervie
     nextPayDueVariant: operator.nextPayDueVariant ?? null,
     daysWithoutManeuverLabel: operatorDaysWithoutManeuver(
       last?.occurredOn,
-      operator.companyHireDate,
+      status,
     ).toLocaleString('es-MX'),
   };
 }

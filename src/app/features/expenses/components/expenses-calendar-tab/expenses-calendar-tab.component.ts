@@ -30,10 +30,7 @@ import {
   shiftCalendarMonth,
 } from '@features/expenses/utils/expenses-calendar.util';
 import { formatExpenseIncurredDateDisplay } from '@features/expenses/utils/expenses-form.util';
-import {
-  calendarItemRubroLabel,
-  expenseFromProjectedCalendarItem,
-} from '@features/expenses/utils/expenses-calendar-projection-expense.util';
+import { calendarItemRubroLabel } from '@features/expenses/utils/expenses-calendar-projection-expense.util';
 import type { Expense } from '@shared/models/logistics.models';
 import { CurrencyMxPipe } from '@shared/pipes/currency-mx.pipe';
 import { ToButtonComponent } from '@shared/ui/to-button/to-button.component';
@@ -58,8 +55,6 @@ const EMPTY_CALENDAR: ExpensesCalendarResponse = {
   summary: {
     actualCount: 0,
     actualTotalAmount: 0,
-    projectedCount: 0,
-    projectedTotalAmount: 0,
     grandCount: 0,
     grandTotalAmount: 0,
   },
@@ -78,9 +73,12 @@ export class ExpensesCalendarTabComponent {
   private readonly expensesApi = inject(ExpensesService);
   private readonly currencyMx = inject(CurrencyMxPipe);
   private readonly initialRange = defaultExpenseCalendarRange();
+  private lastAppliedReloadToken: number | null = null;
 
   /** Incrementar desde la página al crear/editar/eliminar gastos. */
   readonly reloadToken = input(0);
+  /** false en Lista: no recarga el calendario al mutar; al volver, recarga si el token cambió. */
+  readonly active = input(true);
   readonly expenseSelect = output<Expense>();
 
   readonly viewMonth = signal(
@@ -144,9 +142,19 @@ export class ExpensesCalendarTabComponent {
     });
 
     effect(() => {
-      this.reloadToken();
+      const token = this.reloadToken();
+      const active = this.active();
+      const hasValue = this.calendarResource.hasValue();
       untracked(() => {
-        if (this.calendarResource.hasValue()) {
+        if (!active || !hasValue) {
+          return;
+        }
+        if (this.lastAppliedReloadToken === token) {
+          return;
+        }
+        const shouldReload = this.lastAppliedReloadToken != null;
+        this.lastAppliedReloadToken = token;
+        if (shouldReload) {
           void this.calendarResource.reload();
         }
       });
@@ -176,9 +184,10 @@ export class ExpensesCalendarTabComponent {
 
   readonly periodSummary = computed(() => {
     const summary = this.calendarData().summary;
+    const porPagar = this.calendarData().markers.find((marker) => marker.label === 'Por pagar');
     return {
       spent: this.currencyMx.transform(Number(summary.actualTotalAmount), 'MXN'),
-      scheduled: this.currencyMx.transform(Number(summary.projectedTotalAmount), 'MXN'),
+      scheduled: this.currencyMx.transform(Number(porPagar?.amount ?? 0), 'MXN'),
     };
   });
 
@@ -202,21 +211,10 @@ export class ExpensesCalendarTabComponent {
   readonly footerRow = computed(() => {
     const summary = this.calendarData().summary;
     const actualCount = summary.actualCount;
-    const projectedCount = summary.projectedCount;
-    const parts: string[] = [];
-    if (actualCount > 0) {
-      parts.push(
-        actualCount === 1 ? '1 realizado' : `${actualCount.toLocaleString('es-MX')} realizados`,
-      );
-    }
-    if (projectedCount > 0) {
-      parts.push(
-        projectedCount === 1
-          ? '1 proyectado'
-          : `${projectedCount.toLocaleString('es-MX')} proyectados`,
-      );
-    }
-    const countLabel = parts.length > 0 ? parts.join(' · ') : '0 movimientos';
+    const countLabel =
+      actualCount === 1
+        ? '1 movimiento'
+        : `${actualCount.toLocaleString('es-MX')} movimientos`;
     return {
       rubroLabel: 'Total',
       category: countLabel,
@@ -256,33 +254,15 @@ export class ExpensesCalendarTabComponent {
   }
 
   onRowClick(row: Record<string, unknown>): void {
-    const entryType = row['entryType'];
     const id = row['id'];
     if (typeof id !== 'string' || !id) {
       return;
     }
-
-    if (entryType === 'actual') {
-      const item = this.calendarData().items.find(
-        (entry) => entry.entryType === 'actual' && entry.expense?.id === id,
-      );
-      if (item?.expense) {
-        this.expenseSelect.emit(item.expense);
-      }
-      return;
-    }
-
-    if (entryType === 'projected') {
-      const item = this.calendarData().items.find(
-        (entry) => entry.entryType === 'projected' && entry.id === id,
-      );
-      if (!item) {
-        return;
-      }
-      const projectedExpense = expenseFromProjectedCalendarItem(item);
-      if (projectedExpense) {
-        this.expenseSelect.emit(projectedExpense);
-      }
+    const item = this.calendarData().items.find(
+      (entry) => entry.entryType === 'actual' && entry.expense?.id === id,
+    );
+    if (item?.expense) {
+      this.expenseSelect.emit(item.expense);
     }
   }
 

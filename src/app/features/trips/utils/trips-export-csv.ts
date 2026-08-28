@@ -6,7 +6,7 @@ export interface ManiobraListExportRow {
   unitId: string;
   status: string;
   departureAt: string;
-  arrivedAt: string;
+  completionAt: string;
   operationType: string;
   hasIncident: string;
 }
@@ -25,7 +25,7 @@ export function buildManiobrasCsv(rows: readonly ManiobraListExportRow[]): strin
     'Unidad',
     'Estado',
     'Salida',
-    'Cita cliente',
+    'Llegada origen',
     'Configuración',
     'Incidente',
   ];
@@ -40,7 +40,7 @@ export function buildManiobrasCsv(rows: readonly ManiobraListExportRow[]): strin
         row.unitId,
         row.status,
         row.departureAt,
-        row.arrivedAt,
+        row.completionAt,
         row.operationType,
         row.hasIncident,
       ]

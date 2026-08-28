@@ -23,7 +23,7 @@ export type UnitUpdateOptions = {
 
 /**
  * Lista de unidades en memoria + selección para el módulo Flota.
- * Carga inicial al entrar al módulo; dispose al salir de la ruta.
+ * Carga al entrar a la tab Unidades (o al necesitar el catálogo); dispose al salir.
  */
 @Injectable()
 export class UnitsFeatureService {
@@ -51,11 +51,23 @@ export class UnitsFeatureService {
     if (!id) {
       return null;
     }
-    return this._units().find((u) => u.id === id) ?? null;
+    const found = this._units().find((u) => u.id === id);
+    if (found) {
+      return found;
+    }
+    // El drawer puede abrir desde overview antes de hidratar GET /units.
+    if (!this._hydrated()) {
+      return placeholderUnit(id);
+    }
+    return null;
   });
   readonly loading = this._loading.asReadonly();
   /** True tras el primer fetch (éxito o error). */
   readonly hydrated = this._hydrated.asReadonly();
+
+  hasLoadedOnce(): boolean {
+    return this.initialLoadStarted;
+  }
 
   loadUnits(): void {
     if (this.disposed) {
@@ -289,4 +301,8 @@ export class UnitsFeatureService {
     this._hydrated.set(false);
     this.initialLoadStarted = false;
   }
+}
+
+function placeholderUnit(id: string): Unit {
+  return { id, plate: '', capacityKg: 0, status: '' };
 }

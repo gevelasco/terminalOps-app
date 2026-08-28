@@ -25,11 +25,7 @@
       {{ vm.expense()?.category }}
     </h2>
     <p class="fleet-unit-sec__docs-hint">
-      @if (vm.isProjectedExpense()) {
-        {{ vm.projectedStatusHint() }}
-      } @else {
-        Gasto {{ vm.expense()?.id }}
-      }
+      Gasto {{ vm.expense()?.id }}
     </p>
   </div>
 

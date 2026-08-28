@@ -7,6 +7,7 @@ import type {
 } from '@shared/models/auth.models';
 import type { CompanyOperationalSettings } from '@shared/models/company-operational-settings.models';
 import type { MaintenanceDatePeriod } from '@shared/models/company-operational-settings.models';
+import { normalizePaymentReminderDays } from '@shared/models/company-operational-settings.models';
 import { normalizeApiIsoDate } from '@core/utils/api-date';
 import {
   SESSION_TAB_CHANNEL,
@@ -201,6 +202,9 @@ export class SessionService {
   );
   readonly dieselControlChangedAt = computed(
     () => this.data()?.dieselControlChangedAt ?? null,
+  );
+  readonly paymentReminderDaysBefore = computed(() =>
+    normalizePaymentReminderDays(this.data()?.paymentReminderDaysBefore),
   );
   readonly controlAutomaticRecognition = computed(
     () => this.tripAssistPrefillEnabled(),
@@ -412,6 +416,7 @@ export class SessionService {
         | 'tripAutoPerDiemPaymentMethod'
         | 'tripAutoControlPaymentMethod'
         | 'dieselControlEnabled'
+        | 'paymentReminderDaysBefore'
         | 'maintenanceKmControlEnabled'
         | 'maintenanceKmIntervalDefault'
         | 'maintenanceDateControlEnabled'
@@ -485,6 +490,11 @@ export class SessionService {
     }
     if (patch.dieselControlEnabled !== undefined) {
       next.dieselControlEnabled = patch.dieselControlEnabled;
+    }
+    if (patch.paymentReminderDaysBefore !== undefined) {
+      next.paymentReminderDaysBefore = normalizePaymentReminderDays(
+        patch.paymentReminderDaysBefore,
+      );
     }
     const dieselChangedAt = normalizeApiIsoDate(patch.dieselControlChangedAt);
     if (dieselChangedAt) {
@@ -865,6 +875,9 @@ export class SessionService {
         normalizeApiIsoDate(user.dieselControlChangedAt) ??
         normalizeApiIsoDate(payload?.dieselControlChangedAt) ??
         undefined,
+      paymentReminderDaysBefore: normalizePaymentReminderDays(
+        user.paymentReminderDaysBefore ?? payload?.paymentReminderDaysBefore,
+      ),
       controlAutomaticRecognition:
         user.tripAssistPrefillEnabled ??
         user.controlAutomaticRecognition ??

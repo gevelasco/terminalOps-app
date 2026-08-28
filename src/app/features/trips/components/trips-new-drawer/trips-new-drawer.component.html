@@ -236,13 +236,15 @@
       <to-select
         label="Configuración"
         [options]="operationOptions()"
-        [(value)]="operationType"
+        [value]="operationType()"
+        (valueChange)="onOperationTypeChange($event)"
         (focusin)="onOperationConfigFocus()"
       />
       <to-select
         label="Tipo de contenedor"
         [options]="containerTypeOptions"
-        [(value)]="containerType"
+        [value]="containerType()"
+        (valueChange)="onContainerTypeChange($event)"
       />
     </div>
     <div class="maniobra-drawer__grid2">
@@ -357,6 +359,7 @@
         [unitsData]="pickerUnits()"
         [tripsData]="pickerActiveTrips()"
         [dataLoading]="catalog.fleetLoading()"
+        [emptyMessage]="unitPickerEmptyMessage()"
         [(unitId)]="unitId"
         (focusNotify)="onUnitInputFocus()"
         (unitPicked)="onUnitPicked($event)"

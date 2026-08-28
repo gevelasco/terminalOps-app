@@ -1,18 +1,10 @@
-import type {
-  ExpenseCalendarItem,
-  ExpenseCalendarProjectedRow,
-} from '@core/services/api/expenses';
+import type { ExpenseCalendarItem } from '@core/services/api/expenses';
+import { LEDGER_SCHEDULED_EXPENSE_KIND_SET } from '@shared/catalogs/expense-form-options';
 import type { ToIconName } from '@shared/ui/to-icon/to-icon-paths';
 
 const OPERATIONAL_TZ = 'America/Mexico_City';
 
-const SCHEDULED_SOURCES = new Set([
-  'insurance',
-  'gps',
-  'verification',
-  'operator_payment',
-  'tenure_payment',
-]);
+const SCHEDULED_EXPENSE_KINDS = LEDGER_SCHEDULED_EXPENSE_KIND_SET;
 
 export interface DashboardUpcomingPaymentsRange {
   /** Hoy (MX); separa vencidos de próximos. */
@@ -86,55 +78,6 @@ export function dashboardUpcomingPaymentsRange(
   };
 }
 
-function trimLabel(value?: string): string {
-  return value?.trim() ?? '';
-}
-
-function paymentSubjectLabel(projected: ExpenseCalendarProjectedRow): string {
-  switch (projected.source) {
-    case 'gps':
-      return (
-        trimLabel(projected.relatedUnitLabel) ||
-        trimLabel(projected.fleetRelationLabel)
-      );
-    case 'insurance':
-    case 'verification':
-    case 'tenure_payment':
-      return (
-        trimLabel(projected.relatedUnitLabel) ||
-        trimLabel(projected.relatedEquipmentLabel) ||
-        trimLabel(projected.fleetRelationLabel)
-      );
-    case 'operator_payment':
-      return trimLabel(projected.relatedOperatorLabel);
-    default:
-      return trimLabel(projected.fleetRelationLabel);
-  }
-}
-
-function upcomingPaymentDisplayLabel(projected: ExpenseCalendarProjectedRow): string {
-  const subject = paymentSubjectLabel(projected);
-  const prefix = (() => {
-    switch (projected.source) {
-      case 'gps':
-        return 'GPS';
-      case 'insurance':
-        return 'Seguro';
-      case 'verification':
-        return 'Verificación';
-      case 'operator_payment':
-        return 'Pago';
-      case 'tenure_payment': {
-        const cycleMatch = /\((\d+)\/\d+\)/.exec(projected.hint ?? '');
-        return cycleMatch ? `Pago ${cycleMatch[1]}` : 'Pago';
-      }
-      default:
-        return paymentTypeMeta(projected.source).typeLabel;
-    }
-  })();
-  return subject ? `${prefix} - ${subject}` : prefix;
-}
-
 function paymentTypeMeta(source: string): { typeLabel: string; icon: ToIconName } {
   switch (source) {
     case 'insurance':
@@ -144,6 +87,7 @@ function paymentTypeMeta(source: string): { typeLabel: string; icon: ToIconName 
     case 'verification':
       return { typeLabel: 'Verificación', icon: 'maintenance' };
     case 'operator_payment':
+    case 'operator_commission':
       return { typeLabel: 'Pago operador', icon: 'person' };
     case 'tenure_payment':
       return { typeLabel: 'Pago', icon: 'settlement' };
@@ -181,14 +125,16 @@ function parseAmount(raw: string | number): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-const SCHEDULED_EXPENSE_KINDS = new Set([
-  'insurance',
-  'gps',
-  'tenure_payment',
-]);
-
-function buildLabelFromExpense(expense: { kind: string; description?: string; relatedUnitLabel?: string; relatedEquipmentLabel?: string; fleetRelationLabel?: string }): string {
+function buildLabelFromExpense(expense: {
+  kind: string;
+  description?: string;
+  relatedUnitLabel?: string;
+  relatedEquipmentLabel?: string;
+  relatedOperatorLabel?: string;
+  fleetRelationLabel?: string;
+}): string {
   const subject =
+    expense.relatedOperatorLabel?.trim() ||
     expense.relatedUnitLabel?.trim() ||
     expense.relatedEquipmentLabel?.trim() ||
     expense.fleetRelationLabel?.trim() ||
@@ -201,11 +147,18 @@ function buildLabelFromExpense(expense: { kind: string; description?: string; re
     case 'insurance':
       prefix = 'Seguro';
       break;
+    case 'verification':
+      prefix = 'Verificación';
+      break;
     case 'tenure_payment': {
       const cycleMatch = /\((?:.*?)(\d+)\/(\d+)\)/.exec(expense.description ?? '');
       prefix = cycleMatch ? `Pago ${cycleMatch[1]}` : 'Pago';
       break;
     }
+    case 'operator_payment':
+    case 'operator_commission':
+      prefix = 'Pago';
+      break;
     default:
       prefix = 'Pago';
   }
@@ -219,71 +172,40 @@ export function buildDashboardUpcomingPayments(
   const rows: DashboardUpcomingPaymentRow[] = [];
 
   for (const item of items) {
-    if (item.entryType === 'projected') {
-      const projected = item.projected;
-      if (!projected || projected.nature !== 'scheduled') {
-        continue;
-      }
-      if (!SCHEDULED_SOURCES.has(projected.source)) {
-        continue;
-      }
-      const dueYmd = (projected.dueDate || item.dateYmd || '').trim();
-      if (!dueYmd) {
-        continue;
-      }
-      const overdue = dueYmd < range.today;
-      const upcoming = dueYmd >= range.today && dueYmd <= range.to;
-      if (!overdue && !upcoming) {
-        continue;
-      }
-      const { icon } = paymentTypeMeta(projected.source);
-      const dueLabel = overdue
-        ? `Vencido · ${formatDueLabel(dueYmd)}`
-        : formatDueLabel(dueYmd);
-      rows.push({
-        id: item.id,
-        source: projected.source,
-        displayLabel: upcomingPaymentDisplayLabel(projected),
-        icon,
-        amount: parseAmount(item.amount),
-        currency: item.currency || 'MXN',
-        dueYmd,
-        dueLabel,
-        overdue,
-      });
-    } else if (item.entryType === 'actual' && item.expense) {
-      const expense = item.expense;
-      if (!SCHEDULED_EXPENSE_KINDS.has(expense.kind)) {
-        continue;
-      }
-      if (expense.paidAt != null) {
-        continue;
-      }
-      const dueYmd = (item.dateYmd || '').trim();
-      if (!dueYmd) {
-        continue;
-      }
-      const overdue = dueYmd < range.today;
-      const upcoming = dueYmd >= range.today && dueYmd <= range.to;
-      if (!overdue && !upcoming) {
-        continue;
-      }
-      const { icon } = paymentTypeMeta(expense.kind);
-      const dueLabel = overdue
-        ? `Vencido · ${formatDueLabel(dueYmd)}`
-        : formatDueLabel(dueYmd);
-      rows.push({
-        id: item.id,
-        source: expense.kind,
-        displayLabel: buildLabelFromExpense(expense),
-        icon,
-        amount: parseAmount(item.amount),
-        currency: item.currency || 'MXN',
-        dueYmd,
-        dueLabel,
-        overdue,
-      });
+    if (item.entryType !== 'actual' || !item.expense) {
+      continue;
     }
+    const expense = item.expense;
+    if (!SCHEDULED_EXPENSE_KINDS.has(expense.kind)) {
+      continue;
+    }
+    if (expense.paidAt != null) {
+      continue;
+    }
+    const dueYmd = (item.dateYmd || '').trim();
+    if (!dueYmd) {
+      continue;
+    }
+    const overdue = dueYmd < range.today;
+    const upcoming = dueYmd >= range.today && dueYmd <= range.to;
+    if (!overdue && !upcoming) {
+      continue;
+    }
+    const { icon } = paymentTypeMeta(expense.kind);
+    const dueLabel = overdue
+      ? `Vencido · ${formatDueLabel(dueYmd)}`
+      : formatDueLabel(dueYmd);
+    rows.push({
+      id: item.id,
+      source: expense.kind,
+      displayLabel: buildLabelFromExpense(expense),
+      icon,
+      amount: parseAmount(item.amount),
+      currency: item.currency || 'MXN',
+      dueYmd,
+      dueLabel,
+      overdue,
+    });
   }
 
   rows.sort(

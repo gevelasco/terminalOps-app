@@ -39,6 +39,7 @@ export interface AuthUser {
   tripAutoControlPaymentMethod?: string;
   dieselControlEnabled?: boolean;
   dieselControlChangedAt?: string;
+  paymentReminderDaysBefore?: number;
   controlAutomaticRecognition?: boolean;
   controlAutomaticRecognitionChangedAt?: string;
   maintenanceKmControlEnabled?: boolean;
@@ -123,6 +124,7 @@ export interface SessionData {
   tripAutoControlPaymentMethod: string;
   dieselControlEnabled: boolean;
   dieselControlChangedAt?: string;
+  paymentReminderDaysBefore: number;
   controlAutomaticRecognition: boolean;
   controlAutomaticRecognitionChangedAt?: string;
   maintenanceKmControlEnabled: boolean;

@@ -18,6 +18,7 @@ export class FleetOverviewFeatureService {
 
   private readonly _overview = signal<FleetOverviewResponseDto>(EMPTY_OVERVIEW);
   private readonly _loading = signal(false);
+  private readonly _hydrated = signal(false);
 
   private moduleLoadStarted = false;
   private disposed = false;
@@ -31,6 +32,8 @@ export class FleetOverviewFeatureService {
   readonly items = computed(() => this._overview().items);
   readonly equipmentRows = computed(() => this._overview().equipment);
   readonly loading = this._loading.asReadonly();
+  /** True tras el primer fetch (éxito o error). */
+  readonly hydrated = this._hydrated.asReadonly();
 
   loadOverview(): void {
     if (this.disposed || this.moduleLoadStarted) {
@@ -62,6 +65,7 @@ export class FleetOverviewFeatureService {
     this.fetchSub = null;
     this._overview.set(EMPTY_OVERVIEW);
     this._loading.set(false);
+    this._hydrated.set(false);
     this.moduleLoadStarted = false;
   }
 
@@ -95,6 +99,7 @@ export class FleetOverviewFeatureService {
         finalize(() => {
           if (this.requestGen.isCurrent(requestId)) {
             this._loading.set(false);
+            this._hydrated.set(true);
           }
         }),
       )
@@ -125,6 +130,7 @@ export class FleetOverviewFeatureService {
     this.fetchSub = null;
     this._overview.set(EMPTY_OVERVIEW);
     this._loading.set(false);
+    this._hydrated.set(false);
     this.moduleLoadStarted = false;
   }
 }

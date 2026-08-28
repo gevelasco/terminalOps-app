@@ -22,6 +22,7 @@ import {
   fleetOperationalPillClass,
   fleetComplianceFromEquipment,
   fleetComplianceFromUnitMeta,
+  fleetRenewalBucketLabel,
   type FleetComplianceSummary,
   type FleetOperationalKey,
   type FleetRenewalBucket,
@@ -98,7 +99,36 @@ export function renewalBucketFromOverview(
   return 'na';
 }
 
-/** Enriquece tarjetas de overview con cumplimiento calculado en cliente (fuente única con drawer). */
+/** Cumplimiento desde GET /fleet/overview cuando aún no hay listados de unidades/equipo. */
+export function complianceFromOverviewMaintenance(
+  maintenance: FleetOverviewItemDto['maintenance'],
+): FleetComplianceSummary | undefined {
+  if (!maintenance) {
+    return undefined;
+  }
+  const insBucket = renewalBucketFromOverview(maintenance.insuranceRenewal);
+  const verifBucket = renewalBucketFromOverview(maintenance.inspectionRenewal);
+  return {
+    insBucket,
+    verifBucket,
+    insLabel: fleetRenewalBucketLabel(insBucket),
+    verifLabel: fleetRenewalBucketLabel(verifBucket),
+    insNext: '—',
+    verifNext: '—',
+  };
+}
+
+function withOverviewComplianceFallback(
+  entry: FleetOverviewCardEntry,
+): FleetOverviewCardEntry {
+  if (entry.compliance) {
+    return entry;
+  }
+  const compliance = complianceFromOverviewMaintenance(entry.maintenance);
+  return compliance ? { ...entry, compliance } : entry;
+}
+
+/** Enriquece tarjetas de overview con cumplimiento (listados locales o DTO de overview). */
 export function attachOverviewCompliance(
   entry: FleetOverviewCardEntry,
   units: readonly Unit[],
@@ -106,21 +136,20 @@ export function attachOverviewCompliance(
 ): FleetOverviewCardEntry {
   if (entry.kind === 'standalone-equipment') {
     const equipmentId = entry.hitched[0]?.equipmentId;
-    if (equipmentId == null) {
-      return entry;
+    if (equipmentId != null) {
+      const e = equipment.find((row) => row.id === String(equipmentId));
+      if (e) {
+        return { ...entry, compliance: fleetComplianceFromEquipment(e) };
+      }
     }
-    const e = equipment.find((row) => row.id === String(equipmentId));
-    if (!e) {
-      return entry;
-    }
-    return { ...entry, compliance: fleetComplianceFromEquipment(e) };
+    return withOverviewComplianceFallback(entry);
   }
 
   const unit = units.find((row) => row.id === entry.unitId);
-  if (!unit) {
-    return entry;
+  if (unit) {
+    return { ...entry, compliance: fleetComplianceFromUnitMeta(unit.fleetMeta) };
   }
-  return { ...entry, compliance: fleetComplianceFromUnitMeta(unit.fleetMeta) };
+  return withOverviewComplianceFallback(entry);
 }
 
 function isPlanaType(type: string): boolean {

@@ -1,22 +1,24 @@
 import type { ExpenseCalendarItem } from '@core/services/api/expenses';
+import type { Expense } from '@shared/models/logistics.models';
 import { buildDashboardUpcomingPayments } from './dashboard-upcoming-payments.util';
 
-function projectedItem(
+function actualItem(
   partial: Partial<ExpenseCalendarItem> & {
-    projected: NonNullable<ExpenseCalendarItem['projected']>;
+    dateYmd: string;
+    expense: Expense;
   },
 ): ExpenseCalendarItem {
   return {
-    entryType: 'projected',
-    sortDate: partial.dateYmd ?? partial.projected.dueDate,
-    id: partial.id ?? 'p-1',
+    entryType: 'actual',
+    sortDate: partial.dateYmd,
+    id: partial.id ?? String(partial.expense.id),
     rubroLabel: partial.rubroLabel ?? 'Seguros',
-    conceptLabel: partial.conceptLabel ?? 'Póliza',
-    amount: partial.amount ?? 1000,
+    conceptLabel: partial.conceptLabel ?? partial.expense.category,
+    amount: partial.amount ?? partial.expense.amount,
     currency: partial.currency ?? 'MXN',
-    dateYmd: partial.dateYmd ?? partial.projected.dueDate,
-    statusLabel: 'Pendiente',
-    projected: partial.projected,
+    dateYmd: partial.dateYmd,
+    statusLabel: partial.statusLabel ?? 'Pendiente',
+    expense: partial.expense,
   };
 }
 
@@ -27,48 +29,37 @@ describe('buildDashboardUpcomingPayments', () => {
     fetchFrom: '2025-07-07',
   };
 
-  it('keeps scheduled insurance, gps, verification and operator payments in range', () => {
+  it('keeps unpaid ledger insurance and skips paid or out-of-range rows', () => {
     const items: ExpenseCalendarItem[] = [
-      projectedItem({
+      actualItem({
         id: 'ins-1',
-        amount: 5000,
         dateYmd: '2026-07-15',
-        projected: {
+        amount: 5000,
+        expense: {
           id: 'ins-1',
-          source: 'insurance',
-          nature: 'scheduled',
-          kind: 'insurance',
-          rubroLabel: 'Seguros',
-          conceptLabel: 'Póliza',
+          tripId: '',
+          category: 'Póliza',
           amount: 5000,
           currency: 'MXN',
-          dueDate: '2026-07-15',
-          tripId: null,
-          relatedUnitId: 1,
-          relatedEquipmentId: null,
-          relatedOperatorId: null,
+          incurredAt: '2026-07-15',
+          kind: 'insurance',
+          paidAt: null,
           relatedUnitLabel: 'T-101',
-          hint: '',
         },
       }),
-      projectedItem({
-        id: 'op-committed',
+      actualItem({
+        id: 'op-paid',
         dateYmd: '2026-07-20',
-        projected: {
-          id: 'op-committed',
-          source: 'operator_payment',
-          nature: 'committed',
-          kind: 'operator_payment',
-          rubroLabel: 'Maniobra',
-          conceptLabel: 'Pago a operador',
+        amount: 2000,
+        expense: {
+          id: 'op-paid',
+          tripId: '1',
+          category: 'Pago a operador',
           amount: 2000,
           currency: 'MXN',
-          dueDate: '2026-07-20',
-          tripId: 1,
-          relatedUnitId: null,
-          relatedEquipmentId: null,
-          relatedOperatorId: 1,
-          hint: '',
+          incurredAt: '2026-07-20',
+          kind: 'operator_payment',
+          paidAt: '2026-07-20T18:00:00.000Z',
         },
       }),
     ];
@@ -81,69 +72,48 @@ describe('buildDashboardUpcomingPayments', () => {
     expect(rows[0]?.overdue).toBe(false);
   });
 
-  it('formats gps, insurance equipment and operator labels', () => {
+  it('formats gps, insurance equipment and operator labels from ledger rows', () => {
     const items: ExpenseCalendarItem[] = [
-      projectedItem({
+      actualItem({
         id: 'gps-1',
         dateYmd: '2026-07-10',
-        projected: {
+        expense: {
           id: 'gps-1',
-          source: 'gps',
-          nature: 'scheduled',
-          kind: 'gps',
-          rubroLabel: 'GPS',
-          conceptLabel: 'Servicio',
+          tripId: '',
+          category: 'GPS',
           amount: 500,
           currency: 'MXN',
-          dueDate: '2026-07-10',
-          tripId: null,
-          relatedUnitId: 2,
-          relatedEquipmentId: null,
-          relatedOperatorId: null,
+          incurredAt: '2026-07-10',
+          kind: 'gps',
           relatedUnitLabel: 'T-202',
-          hint: '',
         },
       }),
-      projectedItem({
+      actualItem({
         id: 'ins-eq',
         dateYmd: '2026-07-12',
-        projected: {
+        expense: {
           id: 'ins-eq',
-          source: 'insurance',
-          nature: 'scheduled',
-          kind: 'insurance',
-          rubroLabel: 'Seguros',
-          conceptLabel: 'Póliza',
+          tripId: '',
+          category: 'Póliza',
           amount: 3000,
           currency: 'MXN',
-          dueDate: '2026-07-12',
-          tripId: null,
-          relatedUnitId: null,
-          relatedEquipmentId: 5,
-          relatedOperatorId: null,
+          incurredAt: '2026-07-12',
+          kind: 'insurance',
           relatedEquipmentLabel: 'EQ-05',
-          hint: '',
         },
       }),
-      projectedItem({
+      actualItem({
         id: 'op-1',
         dateYmd: '2026-07-14',
-        projected: {
+        expense: {
           id: 'op-1',
-          source: 'operator_payment',
-          nature: 'scheduled',
-          kind: 'operator_payment',
-          rubroLabel: 'Maniobra',
-          conceptLabel: 'Pago a operador',
+          tripId: '1',
+          category: 'Pago a operador',
           amount: 2000,
           currency: 'MXN',
-          dueDate: '2026-07-14',
-          tripId: 1,
-          relatedUnitId: null,
-          relatedEquipmentId: null,
-          relatedOperatorId: 3,
+          incurredAt: '2026-07-14',
+          kind: 'operator_payment',
           relatedOperatorLabel: 'Juan Pérez',
-          hint: '',
         },
       }),
     ];
@@ -157,27 +127,21 @@ describe('buildDashboardUpcomingPayments', () => {
     ]);
   });
 
-  it('includes overdue scheduled payments before today', () => {
+  it('includes overdue unpaid ledger payments before today', () => {
     const items: ExpenseCalendarItem[] = [
-      projectedItem({
+      actualItem({
         id: 'gps-overdue',
         dateYmd: '2026-07-01',
-        projected: {
+        amount: 800,
+        expense: {
           id: 'gps-overdue',
-          source: 'gps',
-          nature: 'scheduled',
-          kind: 'gps',
-          rubroLabel: 'GPS',
-          conceptLabel: 'Servicio GPS',
+          tripId: '',
+          category: 'Servicio GPS',
           amount: 800,
           currency: 'MXN',
-          dueDate: '2026-07-01',
-          tripId: null,
-          relatedUnitId: 2,
-          relatedEquipmentId: null,
-          relatedOperatorId: null,
+          incurredAt: '2026-07-01',
+          kind: 'gps',
           relatedUnitLabel: 'T-88',
-          hint: '',
         },
       }),
     ];
@@ -190,26 +154,20 @@ describe('buildDashboardUpcomingPayments', () => {
     expect(rows[0]?.dueLabel).toContain('Vencido');
   });
 
-  it('excludes scheduled payments after end of month', () => {
+  it('excludes unpaid payments after end of month', () => {
     const items: ExpenseCalendarItem[] = [
-      projectedItem({
+      actualItem({
         id: 'ins-future',
         dateYmd: '2026-08-05',
-        projected: {
+        expense: {
           id: 'ins-future',
-          source: 'insurance',
-          nature: 'scheduled',
-          kind: 'insurance',
-          rubroLabel: 'Seguros',
-          conceptLabel: 'Póliza',
+          tripId: '',
+          category: 'Póliza',
           amount: 5000,
           currency: 'MXN',
-          dueDate: '2026-08-05',
-          tripId: null,
-          relatedUnitId: 1,
-          relatedEquipmentId: null,
-          relatedOperatorId: null,
-          hint: '',
+          incurredAt: '2026-08-05',
+          kind: 'insurance',
+          relatedUnitLabel: 'T-101',
         },
       }),
     ];

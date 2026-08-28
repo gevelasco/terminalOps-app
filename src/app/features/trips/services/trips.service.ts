@@ -17,7 +17,8 @@ import { createRequestGeneration } from '@shared/utils/request-generation';
 
 /**
  * Estado de UI del feature Trips: selección y mutaciones.
- * La lista vive en `OperationalFleetSyncService` (una sola copia en memoria).
+ * La lista paginada y el mapa viven en sus propias vistas; aquí solo se
+ * parchea la copia en memoria de activas mutadas en esta sesión.
  * Alcance: ruta `/trips`.
  */
 @Injectable()
@@ -30,7 +31,6 @@ export class TripsFeatureService {
   private readonly _selectedTripId = signal<string | null>(null);
   private readonly _fallbackTrip = signal<Trip | null>(null);
 
-  private loadRequested = false;
   private disposed = false;
   private selectTripSub: Subscription | null = null;
 
@@ -39,8 +39,6 @@ export class TripsFeatureService {
   }
 
   readonly trips = this.operationalSync.trips;
-  readonly loading = this.operationalSync.tripsLoading;
-  readonly tripsHydrated = this.operationalSync.tripsHydrated;
   readonly listEpoch = this.operationalSync.tripsEpoch;
   readonly selectedTripId = this._selectedTripId.asReadonly();
   readonly selectedTrip = computed(() => {
@@ -51,26 +49,11 @@ export class TripsFeatureService {
     return this.trips().find((t) => t.id === id) ?? this._fallbackTrip();
   });
 
-  loadTrips(): void {
-    if (this.disposed || this.loadRequested) {
-      return;
-    }
-    this.loadRequested = true;
-    this.operationalSync.ensureTripsLoaded();
-  }
-
-  refreshTrips(): void {
-    if (this.disposed) {
-      return;
-    }
-    this.operationalSync.refreshTrips();
-  }
-
   /**
-   * Selecciona y SIEMPRE revalida contra el servidor: la caché operativa se
-   * carga una vez por sesión y el lifecycle del API puede haber transicionado
-   * la maniobra (p. ej. en curso → completada) sin que la copia local se entere.
-   * La copia cacheada se muestra de inmediato (sin parpadeo) mientras llega la fresca.
+   * Selecciona y SIEMPRE revalida contra el servidor: el lifecycle del API
+   * puede haber transicionado la maniobra (p. ej. en curso → completada)
+   * sin que la copia local se entere. Si hay copia en memoria se muestra
+   * de inmediato mientras llega el GET por id.
    */
   selectTrip(tripId: string): void {
     const id = tripId.trim();
@@ -305,6 +288,5 @@ export class TripsFeatureService {
     this.selectTripSub = null;
     this._selectedTripId.set(null);
     this._fallbackTrip.set(null);
-    this.loadRequested = false;
   }
 }

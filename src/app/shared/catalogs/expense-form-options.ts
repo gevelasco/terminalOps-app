@@ -62,3 +62,17 @@ export const EXPENSE_CURRENCY_OPTIONS: ToSelectOption[] = [
   { value: 'MXN', label: 'MXN — Peso mexicano' },
   { value: 'USD', label: 'USD — Dólar' },
 ];
+
+/** Kinds stored in the ledger as scheduled payables. */
+export const LEDGER_SCHEDULED_EXPENSE_KINDS = [
+  'insurance',
+  'gps',
+  'verification',
+  'tenure_payment',
+  'operator_payment',
+  'operator_commission',
+] as const;
+
+export const LEDGER_SCHEDULED_EXPENSE_KIND_SET = new Set<string>(
+  LEDGER_SCHEDULED_EXPENSE_KINDS,
+);

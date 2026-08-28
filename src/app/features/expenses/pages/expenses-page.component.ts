@@ -14,7 +14,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
-import { catchError, firstValueFrom, of } from 'rxjs';
+import { catchError, firstValueFrom, of, Subscription } from 'rxjs';
 import { ToastService } from '@core/notifications/toast.service';
 import { OperationalFleetSyncService } from '@core/services/state/operational-fleet-sync.service';
 import { SessionService } from '@core/services/state/session';
@@ -106,6 +106,9 @@ export class ExpensesPageComponent implements OnInit {
   protected readonly isMobileViewport = injectIsMobileViewport();
 
   readonly pageTab = signal<ExpensesPageTab>('calendar');
+  /** Una vez visitada, la tab queda montada para no refetch al volver. */
+  readonly calendarTabReady = signal(false);
+  readonly listTabReady = signal(false);
   readonly viewSegmentTabs: readonly ToSegmentTab<ExpensesPageTab>[] = [
     {
       id: 'calendar',
@@ -175,7 +178,7 @@ export class ExpensesPageComponent implements OnInit {
     ExpensesListResponse,
     ExpensesListParams | undefined
   >({
-    request: () => (this.pageTab() === 'list' ? this.listParams() : undefined),
+    request: () => (this.listTabReady() ? this.listParams() : undefined),
     loader: async ({ request }): Promise<ExpensesListResponse> => {
       if (!request) {
         return {
@@ -230,7 +233,11 @@ export class ExpensesPageComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    this.openExpenseFromQuery(this.route.snapshot.queryParamMap.get('expenseId'));
+    const expenseId = this.route.snapshot.queryParamMap.get('expenseId');
+    if (!expenseId?.trim()) {
+      this.calendarTabReady.set(true);
+    }
+    this.openExpenseFromQuery(expenseId);
     this.route.queryParamMap
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((params) => {
@@ -244,6 +251,7 @@ export class ExpensesPageComponent implements OnInit {
       return;
     }
     this.pageTab.set('list');
+    this.listTabReady.set(true);
     this.expensesApi
       .getExpenseById(id)
       .pipe(
@@ -319,6 +327,7 @@ export class ExpensesPageComponent implements OnInit {
   readonly newExpenseOpen = signal(false);
   readonly detailExpense = signal<Expense | null>(null);
   readonly calendarReloadToken = signal(0);
+  private detailHydrateSub: Subscription | null = null;
   readonly canWriteExpenses = computed(() =>
     this.session.canWriteModule(APP_MODULE_CODES.EXPENSES),
   );
@@ -354,6 +363,9 @@ export class ExpensesPageComponent implements OnInit {
   });
 
   reloadExpenses(): void {
+    if (!this.listTabReady()) {
+      return;
+    }
     void this.listResource.reload();
   }
 
@@ -373,21 +385,50 @@ export class ExpensesPageComponent implements OnInit {
 
   onPageTabSelect(tab: ExpensesPageTab): void {
     this.pageTab.set(tab);
+    if (tab === 'list') {
+      this.listTabReady.set(true);
+    }
+    if (tab === 'calendar') {
+      this.calendarTabReady.set(true);
+    }
   }
 
   onCalendarExpenseSelect(expense: Expense): void {
-    this.detailExpense.set(expense);
+    this.openExpenseDetail(expense);
   }
 
   private bumpCalendarReload(): void {
     this.calendarReloadToken.update((n) => n + 1);
   }
 
+  private reloadVisibleExpenseViews(): void {
+    this.reloadExpenses();
+    if (this.calendarTabReady()) {
+      this.bumpCalendarReload();
+    }
+  }
+
+  private openExpenseDetail(expense: Expense): void {
+    this.detailExpense.set(expense);
+    this.detailHydrateSub?.unsubscribe();
+    this.detailHydrateSub = this.expensesApi
+      .getExpenseById(expense.id)
+      .pipe(
+        catchError(() => of(null)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((fresh) => {
+        if (!fresh || this.detailExpense()?.id !== fresh.id) {
+          return;
+        }
+        this.detailExpense.set(fresh);
+      });
+  }
+
   onExpenseSaved(expense?: Expense): void {
     this.newExpenseOpen.set(false);
     this.detailExpense.set(null);
-    this.reloadExpenses();
-    this.bumpCalendarReload();
+    this.reloadVisibleExpenseViews();
     if (expense && this.expenseAffectsOperatorPayments(expense)) {
       this.operationalFleetSync.notifyOperatorPaymentsMutation();
     }
@@ -395,8 +436,7 @@ export class ExpensesPageComponent implements OnInit {
 
   onExpenseUpdated(expense: Expense): void {
     this.detailExpense.set(expense);
-    this.reloadExpenses();
-    this.bumpCalendarReload();
+    this.reloadVisibleExpenseViews();
     if (this.expenseAffectsOperatorPayments(expense)) {
       this.operationalFleetSync.notifyOperatorPaymentsMutation();
     }
@@ -409,19 +449,20 @@ export class ExpensesPageComponent implements OnInit {
     }
     const e = this.expenses().find((x) => x.id === id);
     if (e) {
-      this.detailExpense.set(e);
+      this.openExpenseDetail(e);
     }
   }
 
   onDetailDismiss(): void {
+    this.detailHydrateSub?.unsubscribe();
+    this.detailHydrateSub = null;
     this.detailExpense.set(null);
   }
 
   onExpenseDeleted(): void {
     const deleted = this.detailExpense();
     this.detailExpense.set(null);
-    this.reloadExpenses();
-    this.bumpCalendarReload();
+    this.reloadVisibleExpenseViews();
     if (deleted && this.expenseAffectsFleetMeta(deleted)) {
       this.operationalFleetSync.notifyFleetModuleMutation();
     }

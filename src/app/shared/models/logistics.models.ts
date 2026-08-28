@@ -59,6 +59,14 @@ export interface Trip {
   operatorName?: string;
   /** Código operativo live (join) de la unidad. */
   unitOperationalCode?: string;
+  /** Placa de la unidad (detalle; no viene en listado). */
+  unitPlate?: string | null;
+  /** Placas del convoy en el mismo orden que `equipmentIds`. */
+  equipmentPlates?: string[];
+  /** Licencia del operador (detalle). */
+  operatorLicenseNumber?: string | null;
+  /** Vencimiento de licencia ISO date (detalle). */
+  operatorLicenseExpiresOn?: string | null;
   status: TripStatus;
   /** Alta de la maniobra en el sistema (`created_at`). */
   createdAt: string;
@@ -77,6 +85,10 @@ export interface Trip {
   operationType: TripOperationType;
   /** FK a configuración operativa viva (catálogo). */
   operationConfigurationId?: string;
+  /** Nombre de catálogo para la badge sin descargar el catálogo entero. */
+  operationConfigurationName?: string | null;
+  /** Cupo de equipos de esa configuración (detalle / listado). */
+  operationConfigurationMaxEquipmentCount?: number | null;
   loadType: TripLoadType;
   containerType: TripContainerType;
   /** Qué transporta el contenedor (mercancía, producto, referencia del cliente). */
@@ -116,8 +128,12 @@ export interface Trip {
   maneuverKind?: string;
   /** Tarifa de destino vinculada al crear (si hubo match). */
   destinationRateId?: string | null;
+  /** Resumen de esa tarifa (detalle; una fila, no el catálogo). */
+  destinationRateSummary?: string | null;
   /** Centro operativo de origen al programar (FK). */
   originOperationalCenterId?: string | null;
+  /** Nombre/código del centro de origen (detalle). */
+  originOperationalCenterLabel?: string | null;
   /** CP de origen (5 dígitos) y desglose SEPOMex al programar. */
   originPostalCode?: string;
   /** Ciudad y/o municipio + estado (línea legible). */
@@ -646,6 +662,11 @@ export interface Equipment {
   trailerBrandAbbr?: string;
   trailerYear?: string;
   fleetMeta?: EquipmentFleetMeta;
+  /**
+   * Tractora asignada (detalle de equipo). Resumen para ficha de enganche;
+   * abrir la unidad sigue haciendo GET /units/:id.
+   */
+  assignedUnit?: Unit;
   /**
    * @deprecated Preferir `fleetMeta.equipmentAxleCount` y bloque técnico.
    */

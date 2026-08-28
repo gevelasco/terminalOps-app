@@ -1,14 +1,17 @@
-import { computed, DestroyRef, Injectable, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import { catchError, finalize, of, Subscription } from 'rxjs';
-import { ClientsService } from '@core/services/api/clients';
+import {
+  ClientsService,
+  type ClientBalanceOverviewItem,
+} from '@core/services/api/clients';
 import {
   emptyClientBalanceSummary,
   type ClientBalanceSummary,
 } from '@features/clients/utils/client-balance-summary';
 
 /**
- * Datos compartidos para balance comercial (tab Clientes + drawer).
- * Overview y balance por cliente: API (`/clients/balance-overview`, `/clients/:id/balance`).
+ * Overview de cartera (tab Clientes) y balance por id (drawer).
+ * Al entrar al módulo solo corre `/clients/balance-overview`.
  */
 @Injectable()
 export class ClientsBalanceContextService {
@@ -20,20 +23,21 @@ export class ClientsBalanceContextService {
   private disposed = false;
   private overviewFetchSub: Subscription | null = null;
 
-  private readonly _overviewByClientId = signal<
-    Readonly<Record<string, ClientBalanceSummary>>
-  >({});
+  private readonly _overviewItems = signal<readonly ClientBalanceOverviewItem[]>(
+    [],
+  );
   private readonly _overviewLoading = signal(false);
 
   private readonly _clientBalance = signal<ClientBalanceSummary | null>(null);
   private readonly _clientBalanceClientId = signal<string | null>(null);
   private readonly _clientBalanceLoading = signal(false);
+  private _lastPeriodKey: string | null = null;
 
   constructor() {
     this.destroyRef.onDestroy(() => this.dispose());
   }
 
-  readonly overviewByClientId = this._overviewByClientId.asReadonly();
+  readonly overviewItems = this._overviewItems.asReadonly();
   readonly overviewLoading = this._overviewLoading.asReadonly();
   readonly clientBalance = this._clientBalance.asReadonly();
   readonly clientBalanceClientId = this._clientBalanceClientId.asReadonly();
@@ -54,7 +58,7 @@ export class ClientsBalanceContextService {
     this.overviewFetchSub = this.clientsApi
       .getClientsBalanceOverview()
       .pipe(
-        catchError(() => of({ asOf: '', items: [] })),
+        catchError(() => of({ asOf: '', items: [] as ClientBalanceOverviewItem[] })),
         finalize(() => {
           if (!this.disposed) {
             this._overviewLoading.set(false);
@@ -65,18 +69,9 @@ export class ClientsBalanceContextService {
         if (this.disposed) {
           return;
         }
-        const map: Record<string, ClientBalanceSummary> = {};
-        for (const item of response.items ?? []) {
-          const id = item.clientId?.trim();
-          if (id) {
-            map[id] = item.summary;
-          }
-        }
-        this._overviewByClientId.set(map);
+        this._overviewItems.set(response.items ?? []);
       });
   }
-
-  private _lastPeriodKey: string | null = null;
 
   ensureClientBalanceLoaded(
     clientId: string,
@@ -125,7 +120,6 @@ export class ClientsBalanceContextService {
 
   invalidateBalances(): void {
     this.overviewLoadStarted = false;
-    this._overviewByClientId.set({});
     this._clientBalance.set(null);
     this._clientBalanceClientId.set(null);
     this._lastPeriodKey = null;
@@ -140,7 +134,7 @@ export class ClientsBalanceContextService {
     this.clientBalanceSub?.unsubscribe();
     this.overviewFetchSub = null;
     this.clientBalanceSub = null;
-    this._overviewByClientId.set({});
+    this._overviewItems.set([]);
     this._overviewLoading.set(false);
     this._clientBalance.set(null);
     this._clientBalanceClientId.set(null);

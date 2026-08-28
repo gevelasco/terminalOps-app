@@ -277,7 +277,7 @@ export class ClientsNewDrawerComponent {
       .subscribe({
         next: (row) => {
           if (pendingUploads.length > 0) {
-            this.clientsFeature.refreshClients();
+            this.clientsFeature.refreshClientById(row.id);
           }
           this.saving.set(false);
           this.toast.show(
@@ -300,7 +300,9 @@ export class ClientsNewDrawerComponent {
               'El cliente se creó, pero no se pudieron subir los documentos. Ábrelo y súbelos de nuevo.',
               'error',
             );
-            this.clientsFeature.refreshClients();
+            this.clientsFeature.refreshClientById(
+              String((err as { clientId?: string }).clientId ?? ''),
+            );
             this.saving.set(false);
             this.dismiss.emit();
             return;

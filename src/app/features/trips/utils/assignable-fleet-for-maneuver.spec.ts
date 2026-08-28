@@ -159,7 +159,7 @@ describe('unitMatchesManeuverAssignment', () => {
     expect(unitMatchesManeuverAssignment(tractorGondola, naSencillo)).toBe(true);
   });
 
-  it('with ISO container hides self-contained units and non-container trailers', () => {
+  it('with ISO container shows chassis and platform, hides the rest', () => {
     const iso = { operationCode: 'sencillo', containerType: '40hc' };
 
     expect(unitMatchesManeuverAssignment(volteo, iso)).toBe(false);
@@ -176,17 +176,60 @@ describe('unitMatchesManeuverAssignment', () => {
     ).toBe(true);
   });
 
-  it('rejects a 20′ chassis for a 45′ container', () => {
+  it('lets any chassis or platform haul any container size', () => {
+    const chassis40 = unit({
+      id: 'chasis-40',
+      transportType: 'tractocamion',
+      hitchedEquipment: [
+        equipment({
+          id: 'e-40',
+          unitId: 'chasis-40',
+          type: 'portacontenedor',
+          fleetMeta: { equipmentContainerSlotConfig: 'iso_40' },
+        }),
+      ],
+    });
+    const chassisByLabel = unit({
+      id: 'chasis-label',
+      transportType: 'tractocamion',
+      hitchedEquipment: [
+        equipment({
+          id: 'e-label',
+          unitId: 'chasis-label',
+          type: 'Portacontenedor / chasis',
+          fleetMeta: { equipmentContainerSlotConfig: '40′ (un contenedor)' },
+        }),
+      ],
+    });
+
     expect(
       unitMatchesManeuverAssignment(chassis20, {
         operationCode: 'sencillo',
         containerType: '45hc',
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       unitMatchesManeuverAssignment(chassis20, {
         operationCode: 'sencillo',
+        containerType: '40hc',
+      }),
+    ).toBe(true);
+    expect(
+      unitMatchesManeuverAssignment(chassis40, {
+        operationCode: 'sencillo',
+        containerType: '20hc',
+      }),
+    ).toBe(true);
+    expect(
+      unitMatchesManeuverAssignment(chassisByLabel, {
+        operationCode: 'sencillo',
         containerType: '20dc',
+      }),
+    ).toBe(true);
+    expect(
+      unitMatchesManeuverAssignment(tractorPlana, {
+        operationCode: 'plana',
+        containerType: '20hc',
       }),
     ).toBe(true);
   });

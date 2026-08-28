@@ -126,14 +126,22 @@
   }
 </div>
 
-@if (pageTab() === 'calendar') {
+@if (calendarTabReady()) {
   <app-expenses-calendar-tab
     class="expenses-calendar-panel"
+    [class.expenses-tab-panel--hidden]="pageTab() !== 'calendar'"
+    [attr.aria-hidden]="pageTab() !== 'calendar'"
+    [active]="pageTab() === 'calendar'"
     [reloadToken]="calendarReloadToken()"
     (expenseSelect)="onCalendarExpenseSelect($event)"
   />
-} @else {
-  <div class="expenses-table-block">
+}
+@if (listTabReady()) {
+  <div
+    class="expenses-table-block"
+    [class.expenses-tab-panel--hidden]="pageTab() !== 'list'"
+    [attr.aria-hidden]="pageTab() !== 'list'"
+  >
     @if (initialLoading()) {
       <to-skeleton [lines]="5" />
     } @else if (showListEmptyNoExpenses()) {

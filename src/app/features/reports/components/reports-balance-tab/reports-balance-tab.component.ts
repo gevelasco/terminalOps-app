@@ -8,10 +8,8 @@ import {
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { catchError, map, of, startWith, switchMap } from 'rxjs';
 import { SessionService } from '@core/services/state/session';
-import {
-  ReportsTabDataService,
-  type ReportsBalanceBundle,
-} from '@features/reports/services/reports-tab-data.service';
+import { ReportsTabDataService } from '@features/reports/services/reports-tab-data.service';
+import type { ReportsBalanceData } from '@shared/models/api/api-reports-balance.model';
 import { buildReportsBalanceClientPerformanceOption } from '@features/reports/utils/charts/balance/reports-balance-client-performance-option';
 import { buildReportsBalanceCompositionPieOption } from '@features/reports/utils/charts/balance/reports-balance-composition-pie-option';
 import { buildReportsBalanceProfitTreemapOption } from '@features/reports/utils/charts/balance/reports-balance-profit-treemap-option';
@@ -60,19 +58,19 @@ export class ReportsBalanceTabComponent {
   private readonly pageState = toSignal(
     toObservable(this.filter).pipe(
       switchMap((params) =>
-        this.tabData.getBalanceBundle(params).pipe(
+        this.tabData.getBalance(params).pipe(
           map((data) => ({ loading: false, data })),
           catchError(() => of({ loading: false, data: null })),
-          startWith({ loading: true, data: null as ReportsBalanceBundle | null }),
+          startWith({ loading: true, data: null as ReportsBalanceData | null }),
         ),
       ),
     ),
-    { initialValue: { loading: true, data: null as ReportsBalanceBundle | null } },
+    { initialValue: { loading: true, data: null as ReportsBalanceData | null } },
   );
 
   readonly loading = computed(() => this.pageState()?.loading ?? true);
-  readonly summary = computed(() => this.pageState()?.data?.balance.summary);
-  readonly insights = computed(() => this.pageState()?.data?.balance.insights);
+  readonly summary = computed(() => this.pageState()?.data?.summary);
+  readonly insights = computed(() => this.pageState()?.data?.insights);
 
   readonly chartShellColor = computed(() => {
     this.session.theme();
@@ -128,20 +126,8 @@ export class ReportsBalanceTabComponent {
     }),
   );
 
-  private readonly calendarItems = computed(
-    () => this.pageState()?.data?.calendarItems ?? [],
-  );
-  private readonly payableToDate = computed(() => {
-    const f = this.filter();
-    const lastDay = new Date(f.toYear, f.toMonth, 0).getDate();
-    return `${f.toYear}-${String(f.toMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-  });
   readonly payableTable = computed(() =>
-    buildReportsPayableTable(
-      this.calendarItems(),
-      this.filter().from,
-      this.payableToDate(),
-    ),
+    buildReportsPayableTable(this.insights()?.payableItems ?? []),
   );
   readonly payableItems = computed(() => this.payableTable().rows);
   readonly hasPayableItems = computed(() => this.payableItems().length > 0);

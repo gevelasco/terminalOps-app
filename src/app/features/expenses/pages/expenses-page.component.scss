@@ -33,6 +33,10 @@
   min-height: 0;
 }
 
+.expenses-tab-panel--hidden {
+  display: none !important;
+}
+
 .expenses-table-block {
   display: flex;
   flex-direction: column;

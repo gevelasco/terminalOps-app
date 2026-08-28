@@ -51,7 +51,7 @@
           }
         } @else {
           <li class="to-unit-input__empty" role="presentation">
-            No hay unidades disponibles (en maniobra o no activas).
+            {{ emptyMessage() }}
           </li>
         }
       </ul>

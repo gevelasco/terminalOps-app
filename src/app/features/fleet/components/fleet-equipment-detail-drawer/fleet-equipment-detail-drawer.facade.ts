@@ -334,6 +334,7 @@ export class FleetEquipmentDetailDrawerFacade {
             }
             if (detail) {
               this.equipmentSource.set(detail);
+              this.syncCatalogFromFeature();
             }
             this.drawerLoading.set(false);
           },
@@ -639,7 +640,11 @@ export class FleetEquipmentDetailDrawerFacade {
     if (!id) {
       return null;
     }
-    return this.unitCatalog().find((u) => u.id === id) ?? null;
+    return (
+      this.unitCatalog().find((u) => u.id === id) ??
+      this.effEquipment().assignedUnit ??
+      null
+    );
   });
 
   readonly hitchAssignmentAvailable = computed(
@@ -676,14 +681,17 @@ export class FleetEquipmentDetailDrawerFacade {
     if (!unit || !resourceIdKey(e.unitId)) {
       return null;
     }
-    const onUnit = equipmentAssignedToUnit(this.equipmentCatalog(), unit.id);
+    const onUnit = this.equipmentFeature.hydrated()
+      ? equipmentAssignedToUnit(this.equipmentCatalog(), unit.id)
+      : [];
     const index = onUnit.findIndex((item) => resourceIdsEqual(item.id, e.id));
+    const total = onUnit.length > 0 ? onUnit.length : undefined;
     return {
       unit,
       positionLabel: equipmentHitchPositionDisplayLabel(
         e,
         index >= 0 ? index : undefined,
-        onUnit.length,
+        total,
       ),
       operationalId: formatUnitTrailerOperationalId(unit),
       plate: unit.plate?.trim() || '—',
@@ -785,6 +793,7 @@ export class FleetEquipmentDetailDrawerFacade {
     if (!this.canWriteFleet() || this.hitchBlockedForAssignedTractor()) {
       return;
     }
+    this.unitsFeature.loadUnits();
     this.requestFocusDetailTab('ficha');
     const e = this.effEquipment();
     this.editUnitId.set(resourceIdKey(e.unitId));
@@ -849,10 +858,20 @@ export class FleetEquipmentDetailDrawerFacade {
 
   requestViewAssignedTractor(): void {
     const unit = this.assignedTractor();
-    if (!unit) {
+    if (unit) {
+      this.viewAssignedUnitCallback?.(unit);
       return;
     }
-    this.viewAssignedUnitCallback?.(unit);
+    const id = resourceIdKey(this.effEquipment().unitId);
+    if (!id) {
+      return;
+    }
+    this.viewAssignedUnitCallback?.({
+      id,
+      plate: '',
+      capacityKg: 0,
+      status: '',
+    });
   }
 
   unhitchFromTractor(): void {

@@ -149,57 +149,47 @@ export class FleetPageComponent implements OnInit {
     });
 
     effect(() => {
-      const hydrated = this.fleet.listsHydrated();
-      const loading = this.fleet.listsLoading();
-      if (!hydrated || loading || this.overviewDefaultApplied) {
+      const tab = this.tab();
+      untracked(() => this.fleet.ensureTabLoaded(tab));
+    });
+
+    effect(() => {
+      if (this.overviewDefaultApplied || this.tab() !== 'overview') {
+        return;
+      }
+      if (this.fleet.overviewLoading() || !this.fleet.overviewHydrated()) {
         return;
       }
       this.overviewDefaultApplied = true;
-      const empty = !this.fleet.hasFleetAssets();
-      if (
-        empty &&
-        this.tab() === 'overview' &&
-        this.pendingUnitId() == null &&
-        this.pendingEquipmentId() == null
-      ) {
+      if (!this.fleet.hasOverviewAssets()) {
         untracked(() => this.tab.set('units'));
       }
     });
 
     effect(() => {
-      if (this.tab() !== 'overview') {
+      if (!this.pendingNewEquipment()) {
         return;
       }
-      const hydrated = this.fleet.listsHydrated();
-      if (!hydrated) {
+      if (this.fleet.unitsLoading() || !this.fleet.unitsHydrated()) {
         return;
       }
-      if (this.fleet.hasFleetAssets()) {
-        untracked(() => this.fleet.ensureOverviewLoaded());
-      } else {
-        untracked(() => this.fleet.clearOverviewIdle());
-      }
+      untracked(() => {
+        this.pendingNewEquipment.set(false);
+        this.tryOpenNewEquipmentDrawer();
+      });
     });
 
     effect(() => {
-      const unitId = this.pendingUnitId();
-      const equipmentId = this.pendingEquipmentId();
-      if (this.fleet.listsLoading() || !this.fleet.listsHydrated()) {
+      if (!this.pendingNewUnit()) {
         return;
       }
-      if (unitId) {
-        this.fleet.selectUnit(unitId);
-        if (this.fleet.selectedUnit()) {
-          this.pendingUnitId.set(null);
-        }
+      if (this.fleet.unitsLoading() || !this.fleet.unitsHydrated()) {
         return;
       }
-      if (equipmentId) {
-        this.fleet.selectEquipment(equipmentId);
-        if (this.fleet.selectedEquipment()) {
-          this.pendingEquipmentId.set(null);
-        }
-      }
+      untracked(() => {
+        this.pendingNewUnit.set(false);
+        this.tryOpenNewUnitDrawer();
+      });
     });
 
     effect(() => {
@@ -209,12 +199,12 @@ export class FleetPageComponent implements OnInit {
     });
   }
 
-  private readonly pendingUnitId = signal<string | null>(null);
-  private readonly pendingEquipmentId = signal<string | null>(null);
-  /** Solo la primera hidratación decide Flota vs Unidades por defecto. */
+  private readonly pendingNewEquipment = signal(false);
+  private readonly pendingNewUnit = signal(false);
+  /** Solo la primera hidratación de overview decide Flota vs Unidades por defecto. */
   private overviewDefaultApplied = false;
 
-  readonly tab = signal<FleetPageTab>('overview');
+  readonly tab = signal<FleetPageTab>(this.resolveInitialTab());
   readonly viewSegmentTabs: readonly ToSegmentTab<FleetPageTab>[] = [
     { id: 'overview', label: 'Flota', icon: 'truck', htmlId: 'fleet-tab-overview' },
     { id: 'units', label: 'Unidades', icon: 'unit', htmlId: 'fleet-tab-units' },
@@ -239,25 +229,22 @@ export class FleetPageComponent implements OnInit {
   ];
 
   readonly overviewViewLoading = computed(
-    () =>
-      !this.fleet.listsHydrated() ||
-      this.fleet.listsLoading() ||
-      (this.fleet.hasFleetAssets() && this.fleet.overviewLoading()),
+    () => !this.fleet.overviewHydrated() || this.fleet.overviewLoading(),
   );
 
   readonly overviewViewEmpty = computed(
     () =>
-      this.fleet.listsHydrated() &&
-      !this.fleet.listsLoading() &&
-      !this.fleet.hasFleetAssets(),
+      this.fleet.overviewHydrated() &&
+      !this.fleet.overviewLoading() &&
+      !this.fleet.hasOverviewAssets(),
   );
 
   readonly loadingOverview = this.overviewViewLoading;
   readonly loadingUnits = computed(
-    () => !this.fleet.listsHydrated() || this.fleet.listsLoading(),
+    () => !this.fleet.unitsHydrated() || this.fleet.unitsLoading(),
   );
   readonly loadingEquipment = computed(
-    () => !this.fleet.listsHydrated() || this.fleet.listsLoading(),
+    () => !this.fleet.equipmentHydrated() || this.fleet.equipmentLoading(),
   );
 
   readonly unitList = this.fleet.units;
@@ -266,7 +253,6 @@ export class FleetPageComponent implements OnInit {
   readonly equipmentListMutable = computed(() => [...this.equipmentList()]);
 
   ngOnInit(): void {
-    this.fleet.loadFleetModule();
     const snap = this.route.snapshot.queryParamMap;
     this.openFleetFromQuery(
       snap.get('unitId'),
@@ -284,6 +270,17 @@ export class FleetPageComponent implements OnInit {
       });
   }
 
+  private resolveInitialTab(): FleetPageTab {
+    const snap = this.route.snapshot.queryParamMap;
+    if (snap.get('unitId')?.trim()) {
+      return 'units';
+    }
+    if (snap.get('equipmentId')?.trim()) {
+      return 'equipment';
+    }
+    return 'overview';
+  }
+
   private openFleetFromQuery(
     unitId: string | null,
     equipmentId: string | null,
@@ -295,15 +292,15 @@ export class FleetPageComponent implements OnInit {
     if (tab === 'cob' || tab === 'ficha' || tab === 'mant') {
       this.fleet.requestDetailTab(tab as FleetDetailDrawerTab);
     }
-    if (!unit && !equipment) {
-      return;
-    }
     if (unit) {
       this.tab.set('units');
-      this.pendingUnitId.set(unit);
+      this.fleet.selectUnit(unit);
     } else if (equipment) {
       this.tab.set('equipment');
-      this.pendingEquipmentId.set(equipment);
+      this.fleet.selectEquipment(equipment);
+    }
+    if (!unit && !equipment) {
+      return;
     }
     void this.router.navigate([], {
       relativeTo: this.route,
@@ -360,7 +357,7 @@ export class FleetPageComponent implements OnInit {
     const list = this.unitList();
     const equipment = this.equipmentList();
     const rowOpts = (u: Unit) => {
-      const hitched = equipmentAssignedToUnit(equipment, u.id);
+      const hitched = u.hitchedEquipment ?? equipmentAssignedToUnit(equipment, u.id);
       const operational = this.unitOperationalKey(u);
       return {
         onRoute: operational === 'on_route',
@@ -370,7 +367,7 @@ export class FleetPageComponent implements OnInit {
     };
     const filtered = q
       ? list.filter((u) => {
-          const hitched = equipmentAssignedToUnit(equipment, u.id);
+          const hitched = u.hitchedEquipment ?? equipmentAssignedToUnit(equipment, u.id);
           const row = buildFleetUnitTableRow(u, rowOpts(u));
           const blob = [
             row['fleetBrand'],
@@ -575,14 +572,22 @@ export class FleetPageComponent implements OnInit {
 
   private openOverviewEquipment(equipmentId: number): void {
     this.detailUnitOnRoute.set(false);
-    const e = this.equipmentList().find((x) => x.id === String(equipmentId));
     this.detailEquipmentOnRoute.set(
-      e ? this.equipmentOperationalKey(e) === 'on_route' : false,
+      this.equipmentOperationalMap().get(String(equipmentId)) === 'on_route',
     );
     this.fleet.selectEquipment(String(equipmentId));
   }
 
   openNewUnit(): void {
+    this.fleet.ensureUnitsLoaded();
+    if (this.fleet.unitsLoading() || !this.fleet.unitsHydrated()) {
+      this.pendingNewUnit.set(true);
+      return;
+    }
+    this.tryOpenNewUnitDrawer();
+  }
+
+  private tryOpenNewUnitDrawer(): void {
     if (!this.planEntitlements.canAddUnit(this.unitList().length)) {
       this.toast.show(this.planEntitlements.unitLimitMessage(), 'warning');
       return;
@@ -591,6 +596,15 @@ export class FleetPageComponent implements OnInit {
   }
 
   openNewEquipment(): void {
+    this.fleet.ensureUnitsLoaded();
+    if (this.fleet.unitsLoading() || !this.fleet.unitsHydrated()) {
+      this.pendingNewEquipment.set(true);
+      return;
+    }
+    this.tryOpenNewEquipmentDrawer();
+  }
+
+  private tryOpenNewEquipmentDrawer(): void {
     if (this.unitList().length === 0) {
       return;
     }

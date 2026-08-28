@@ -8,6 +8,7 @@ import {
   model,
   OnInit,
   signal,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { HttpClient } from '@angular/common/http';
@@ -133,14 +134,30 @@ export class ClientsPageComponent implements OnInit {
       .subscribe((q) => this.searchQuery.set(q));
 
     effect(() => {
+      const items = this.balanceContext.overviewItems();
+      untracked(() =>
+        this.clientsFeature.applyOverviewRows(
+          items.map((item) => ({ id: item.clientId, name: item.name })),
+        ),
+      );
+    });
+
+    effect(() => {
       const id = this.pendingClientId();
-      if (!id || this.clientsFeature.loading()) {
+      if (!id || this.balanceContext.overviewLoading()) {
         return;
       }
-      this.clientsFeature.selectClient(id);
-      if (this.clientsFeature.selectedClient()) {
-        this.pendingClientId.set(null);
-      }
+      this.clientsFeature.clients();
+      untracked(() => {
+        if (this.clientsFeature.selectedClientId() === id) {
+          this.pendingClientId.set(null);
+          return;
+        }
+        this.clientsFeature.selectClient(id);
+        if (this.clientsFeature.selectedClient()) {
+          this.pendingClientId.set(null);
+        }
+      });
     });
 
     this.route.paramMap
@@ -168,10 +185,7 @@ export class ClientsPageComponent implements OnInit {
     },
   ];
 
-  readonly loading = computed(
-    () =>
-      this.clientsFeature.loading() || this.balanceContext.overviewLoading(),
-  );
+  readonly loading = computed(() => this.balanceContext.overviewLoading());
 
   readonly searchInput = model('');
   protected readonly searchQuery = signal('');
@@ -188,10 +202,9 @@ export class ClientsPageComponent implements OnInit {
   );
 
   readonly balanceOverviewCards = computed(() =>
-    buildClientBalanceOverviewCards(
-      this.clientsFeature.clients(),
-      this.balanceContext.overviewByClientId(),
-    ).sort(compareClientBalanceOverviewCards),
+    buildClientBalanceOverviewCards(this.balanceContext.overviewItems()).sort(
+      compareClientBalanceOverviewCards,
+    ),
   );
 
   readonly displayedBalanceCards = computed(() => {
@@ -274,16 +287,14 @@ export class ClientsPageComponent implements OnInit {
     });
   }
 
-  /** Clientes: catálogo + overview de cartera. */
+  /** Clientes: un GET de overview para las cards. */
   private ensureClientsTabLoaded(): void {
-    this.clientsFeature.loadClients();
     this.balanceContext.ensureOverviewLoaded();
   }
 
-  /** Lazy: tarifas + catálogo operativo al entrar por primera vez a Tarifas. */
+  /** Lazy: listado slim al entrar por primera vez a Tarifas. */
   private ensureDestinationRatesTabLoaded(): void {
     this.ratesFeature.loadDestinationRates();
-    this.operationConfigsFeature.loadOperationConfigurations();
   }
 
   onPageTabSelect(tab: ClientsPageTab): void {
@@ -300,7 +311,6 @@ export class ClientsPageComponent implements OnInit {
   }
 
   private openClientDrawer(clientId: string): void {
-    this.balanceContext.ensureClientBalanceLoaded(clientId);
     this.clientsFeature.selectClient(clientId);
   }
 

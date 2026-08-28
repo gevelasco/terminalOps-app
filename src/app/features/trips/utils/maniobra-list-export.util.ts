@@ -28,7 +28,7 @@ export function maniobraListExportRowFromTableRow(
     unitId: String(row['unitId'] ?? ''),
     status: maneuverStatusPillLabel(status, { falseManeuver }),
     departureAt: formatStackedMxExport(row['departureAt']),
-    arrivedAt: formatStackedMxExport(row['arrivedAt']),
+    completionAt: formatStackedMxExport(row['completionAt']),
     operationType: operationTypeLabel(row['operationType'], row),
     hasIncident: row['hasIncident'] === true ? 'Sí' : 'No',
   };

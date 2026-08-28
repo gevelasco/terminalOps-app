@@ -327,27 +327,60 @@ export class TripsNewDrawerComponent {
 
   /** Copias mutables para inputs con `prefetchMode` (evita NG4 readonly→mutable). */
   readonly pickerClients = computed((): Client[] => [...this.catalog.clients()]);
-  readonly pickerUnits = computed((): Unit[] =>
-    this.catalog
+  /**
+   * Si el usuario aún no eligió configuración/contenedor, se listan todas las
+   * unidades disponibles. Después se filtra por convoy y contenedor.
+   */
+  readonly applyUnitAssignmentFilter = signal(false);
+  /** Unidad elegida (se conserva al recargar el catálogo filtrado). */
+  readonly pickedUnit = signal<Unit | null>(null);
+  readonly pickerUnits = computed((): Unit[] => {
+    const units = this.catalog
       .units()
-      .filter(
-        (u) =>
-          isFleetResourceActive(u) &&
-          unitMatchesManeuverAssignment(u, {
-            operationCode: this.operationType(),
-            containerType: this.containerType(),
-          }),
-      ),
+      .filter((u) => isFleetResourceActive(u));
+    if (!this.applyUnitAssignmentFilter()) {
+      return units;
+    }
+    return units.filter((u) =>
+      unitMatchesManeuverAssignment(u, {
+        operationCode: this.operationType(),
+        containerType: this.containerType(),
+      }),
+    );
+  });
+  readonly unitPickerEmptyMessage = computed(() =>
+    this.applyUnitAssignmentFilter()
+      ? 'No hay unidades compatibles con esta configuración y contenedor.'
+      : 'No hay unidades disponibles (en maniobra o no activas).',
   );
+
+  readonly selectedUnit = computed(() => {
+    const id = this.unitId().trim();
+    if (!id) {
+      return undefined;
+    }
+    const fromCatalog = this.catalog.units().find((u) => resourceIdsEqual(u.id, id));
+    if (fromCatalog) {
+      return fromCatalog;
+    }
+    const picked = this.pickedUnit();
+    return picked && resourceIdsEqual(picked.id, id) ? picked : undefined;
+  });
 
   readonly selectedUnitMatchesManeuverConfiguration = computed(() => {
     const uid = this.unitId().trim();
     if (!uid) {
       return true;
     }
-    const unit = this.catalog.units().find((u) => resourceIdsEqual(u.id, uid));
+    if (!this.applyUnitAssignmentFilter()) {
+      return true;
+    }
+    if (this.catalog.fleetLoading()) {
+      return true;
+    }
+    const unit = this.selectedUnit();
     if (!unit) {
-      return this.catalog.units().length === 0;
+      return false;
     }
     return unitMatchesManeuverAssignment(unit, {
       operationCode: this.operationType(),
@@ -359,12 +392,7 @@ export class TripsNewDrawerComponent {
   );
 
   readonly selectedUnitHitchedEquipment = computed(() => {
-    const id = this.unitId().trim();
-    if (!id) {
-      return [];
-    }
-    const unit = this.catalog.units().find((u) => resourceIdsEqual(u.id, id));
-    // El listado de unidades ya trae los equipos enganchados embebidos.
+    const unit = this.selectedUnit();
     return unit ? unitHitchedEquipment(unit) : [];
   });
 
@@ -376,14 +404,6 @@ export class TripsNewDrawerComponent {
   readonly equipmentSecondaryReadonly = computed(() => {
     const hitched = this.selectedUnitHitchedEquipment();
     return hitched[1] ? formatManeuverEquipmentLabel(hitched[1]) : '';
-  });
-
-  readonly selectedUnit = computed(() => {
-    const id = this.unitId().trim();
-    if (!id) {
-      return undefined;
-    }
-    return this.catalog.units().find((u) => resourceIdsEqual(u.id, id));
   });
 
   readonly selectedUnitRequiresHitchedEquipment = computed(() => {
@@ -853,6 +873,7 @@ export class TripsNewDrawerComponent {
       if (!this.unitId().trim()) {
         this.equipmentPrimary.set('');
         this.equipmentSecondary.set('');
+        this.pickedUnit.set(null);
       }
     });
 
@@ -863,14 +884,7 @@ export class TripsNewDrawerComponent {
       if (!unitId || this.selectedUnitMatchesManeuverConfiguration()) {
         return;
       }
-      const configName = this.selectedOperationConfig()?.name ?? 'la configuración seleccionada';
-      this.unitId.set('');
-      this.equipmentPrimary.set('');
-      this.equipmentSecondary.set('');
-      this.toast.show(
-        `La unidad ya no coincide con «${configName}». Elige una unidad compatible.`,
-        'warning',
-      );
+      this.toast.show(this.unitConfigurationMismatchMessage(), 'warning');
     });
 
     effect(() => {
@@ -1419,6 +1433,7 @@ export class TripsNewDrawerComponent {
     this.containerType.set(normalizeTripContainerType(item.containerType));
     this.loadType.set(item.loadType as TripLoadType);
     this.approximateWeightTons.set(item.approximateWeightTons);
+    this.onManeuverSpecChanged();
   }
 
   private applyPhotonCoords(side: 'origin' | 'destination', ll: LatLon | null): void {
@@ -1711,14 +1726,45 @@ export class TripsNewDrawerComponent {
   }
 
   onUnitPicked(ev: UnitPickedEvent): void {
+    this.pickedUnit.set(ev.unit);
     this.equipmentPrimary.set(ev.equipmentIds[0] ?? '');
     this.equipmentSecondary.set(ev.equipmentIds[1] ?? '');
   }
 
   /** Carga perezosa: unidades (y configs, la compatibilidad depende de ellas). */
   onUnitInputFocus(): void {
-    this.catalog.ensureUnitsLoaded();
+    this.catalog.reloadUnits(this.currentUnitAssignmentQuery());
     this.operationConfigsFeature.loadOperationConfigurations();
+  }
+
+  onOperationTypeChange(value: string): void {
+    this.operationType.set(value);
+    this.onManeuverSpecChanged();
+  }
+
+  onContainerTypeChange(value: string): void {
+    this.containerType.set(normalizeTripContainerType(value));
+    this.onManeuverSpecChanged();
+  }
+
+  private onManeuverSpecChanged(): void {
+    this.applyUnitAssignmentFilter.set(true);
+    this.catalog.syncLoadedUnitsFilter({
+      operationType: this.operationType(),
+      containerType: this.containerType(),
+    });
+  }
+
+  private currentUnitAssignmentQuery():
+    | { operationType: string; containerType: string }
+    | undefined {
+    if (!this.applyUnitAssignmentFilter()) {
+      return undefined;
+    }
+    return {
+      operationType: this.operationType(),
+      containerType: this.containerType(),
+    };
   }
 
   onOperatorInputFocus(): void {
@@ -1730,11 +1776,10 @@ export class TripsNewDrawerComponent {
   }
 
   private unitConfigurationMismatchMessage(): string {
-    if (this.containerType() === 'na') {
-      return 'Selecciona una unidad para carga sin contenedor (rabón, volteo o pipa).';
-    }
-    const configName = this.selectedOperationConfig()?.name ?? 'la configuración seleccionada';
-    return `Selecciona una unidad con configuración «${configName}» y equipo para el contenedor.`;
+    return (
+      'La unidad seleccionada no está disponible para el tipo de carga (contenedor) ' +
+      'que se planea mover. Actualice el tipo de carga o la unidad.'
+    );
   }
 
   private labelForEquipmentId(id: string): string {

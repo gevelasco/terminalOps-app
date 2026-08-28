@@ -338,6 +338,49 @@ export function mapApiEquipment(row: Record<string, unknown>): Equipment {
     trailerBrandAbbr: row['trailerBrandAbbr'] as string | undefined,
     trailerYear: row['trailerYear'] as string | undefined,
     fleetMeta,
+    assignedUnit: mapAssignedUnitSummary(row['assignedUnit']),
+  };
+}
+
+function mapAssignedUnitSummary(raw: unknown): Unit | undefined {
+  if (!raw || typeof raw !== 'object') {
+    return undefined;
+  }
+  const row = raw as Record<string, unknown>;
+  const id = resourceIdKey(row['id']);
+  if (!id) {
+    return undefined;
+  }
+  const kmRaw = row['maintenanceKmCounter'];
+  const km =
+    typeof kmRaw === 'number'
+      ? kmRaw
+      : kmRaw != null && String(kmRaw).trim() !== ''
+        ? Number(kmRaw)
+        : undefined;
+  const brandName =
+    typeof row['trailerBrandName'] === 'string'
+      ? row['trailerBrandName'].trim()
+      : '';
+  return {
+    id,
+    plate: String(row['plate'] ?? ''),
+    capacityKg: 0,
+    status: String(row['status'] ?? ''),
+    isActive: row['isActive'] !== false,
+    name: row['name'] != null ? String(row['name']) : undefined,
+    trailerBrandAbbr:
+      row['trailerBrandAbbr'] != null
+        ? String(row['trailerBrandAbbr'])
+        : undefined,
+    trailerYear:
+      row['trailerYear'] != null ? String(row['trailerYear']) : undefined,
+    fleetMeta: {
+      trailerBrandName: brandName || undefined,
+      odometerKm:
+        row['odometerKm'] != null ? String(row['odometerKm']) : undefined,
+      maintenanceKmCounter: Number.isFinite(km) ? km : undefined,
+    },
   };
 }
 
@@ -458,8 +501,24 @@ export function mapApiTrip(row: Record<string, unknown>): Trip {
     operationConfigurationId: row['operationConfigurationId']
       ? resourceIdKey(row['operationConfigurationId'])
       : trip.operationConfigurationId,
+    operationConfigurationName:
+      String(row['operationConfigurationName'] ?? '').trim() || null,
+    operationConfigurationMaxEquipmentCount:
+      typeof row['operationConfigurationMaxEquipmentCount'] === 'number'
+        ? row['operationConfigurationMaxEquipmentCount']
+        : Number.isFinite(Number(row['operationConfigurationMaxEquipmentCount']))
+          ? Number(row['operationConfigurationMaxEquipmentCount'])
+          : null,
     operatorName: String(row['operatorName'] ?? '').trim() || undefined,
     unitOperationalCode,
+    unitPlate: String(row['unitPlate'] ?? '').trim() || null,
+    equipmentPlates: Array.isArray(row['equipmentPlates'])
+      ? (row['equipmentPlates'] as unknown[]).map((p) => String(p ?? '').trim())
+      : undefined,
+    operatorLicenseNumber:
+      String(row['operatorLicenseNumber'] ?? '').trim() || null,
+    operatorLicenseExpiresOn:
+      String(row['operatorLicenseExpiresOn'] ?? '').trim() || null,
     createdAt: String(row['createdAt'] ?? trip.createdAt ?? ''),
     ...mapTripProgrammer(row),
     completedAt:
@@ -477,10 +536,14 @@ export function mapApiTrip(row: Record<string, unknown>): Trip {
       row['destinationRateId'] != null
         ? resourceIdKey(row['destinationRateId'] as string | number)
         : (trip.destinationRateId ?? null),
+    destinationRateSummary:
+      String(row['destinationRateSummary'] ?? '').trim() || null,
     originOperationalCenterId:
       row['originOperationalCenterId'] != null
         ? resourceIdKey(row['originOperationalCenterId'] as string | number)
         : (trip.originOperationalCenterId ?? null),
+    originOperationalCenterLabel:
+      String(row['originOperationalCenterLabel'] ?? '').trim() || null,
     equipmentIds: Array.isArray(rawEquipmentIds)
       ? rawEquipmentIds.map((id) => resourceIdKey(id as string | number))
       : trip.equipmentIds,
@@ -500,7 +563,6 @@ export function mapApiTrip(row: Record<string, unknown>): Trip {
     'operationalDistanceKm',
     'isRoundTrip',
     'dieselPricePerLiterAtCreation',
-    'operatorLicenseNumber',
     'operatorLicenseExpiresLabel',
     'operatorNameSnapshot',
     'unitOperationalCodeSnapshot',

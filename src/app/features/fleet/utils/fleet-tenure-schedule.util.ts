@@ -1,16 +1,11 @@
 import type { Expense } from '@shared/models/logistics.models';
-import { expenseIncurredDateInput } from '@features/expenses/utils/expenses-form.util';
 import { cadenceToMonths } from './fleet-insurance-payment.util';
 import {
   compactInsurancePaymentSchedule,
   insuranceScheduleStatusLabel,
   type InsuranceScheduleRow,
-  type InsuranceScheduleRowStatus,
 } from './fleet-insurance-schedule.util';
-import {
-  fleetCycleIsPaid,
-  fleetPaymentExpenseForCycle,
-} from './fleet-payment-schedule-match.util';
+import { buildLedgerCoverageSchedule } from './fleet-ledger-coverage-schedule.util';
 
 export type TenureScheduleRow = InsuranceScheduleRow;
 
@@ -49,30 +44,6 @@ function addMonths(date: Date, months: number): Date {
   const d = new Date(date.getTime());
   d.setMonth(d.getMonth() + months);
   return d;
-}
-
-function startOfToday(today: Date): Date {
-  const d = new Date(today.getTime());
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function scheduleLabel(index: number, cadenceMonths: number): string {
-  if (cadenceMonths === 1) return `Mes ${index}`;
-  if (cadenceMonths === 3) return `T${index}`;
-  return `Pago ${index}`;
-}
-
-function isTenurePaymentExpense(e: Expense): boolean {
-  const desc = (e.description ?? '').trim();
-  return e.kind === 'tenure_payment' && desc.startsWith('Cuota de financiamiento');
-}
-
-function expensePaidYmd(e: Expense): string {
-  if (e.paidAt) {
-    return expenseIncurredDateInput(e.paidAt);
-  }
-  return expenseIncurredDateInput(e.incurredAt);
 }
 
 export function tenureSchedulePeriodCount(meta: FleetTenurePaymentMeta | undefined): number {
@@ -117,67 +88,14 @@ export function buildTenurePaymentSchedule(params: {
   expenses: readonly Expense[];
   today?: Date;
 }): TenureScheduleRow[] {
-  const meta = params.meta;
-  if (!meta) return [];
-  const cadenceMonths = cadenceToMonths(meta.trailerRecurringPaymentCadence);
-  const totalInstallments = meta.trailerRecurringInstallmentCount ?? 0;
-  const startDateStr = meta.trailerRecurringPaymentDate?.trim();
-
-  if (!startDateStr || cadenceMonths === 0 || totalInstallments <= 0) return [];
-
-  const startDate = parseYmd(startDateStr);
-  if (!startDate) return [];
-
-  const today = startOfToday(params.today ?? new Date());
-  const paymentExpenses = params.expenses.filter(isTenurePaymentExpense);
-  const lastPaymentDate = meta.trailerRecurringLastPaymentDate?.trim();
-
-  const rows: TenureScheduleRow[] = [];
-  let nextUnpaidIndex = -1;
-
-  for (let i = 0; i < totalInstallments; i += 1) {
-    const due = addMonths(startDate, i * cadenceMonths);
-    const dueDate = formatYmd(due);
-    const matched = fleetPaymentExpenseForCycle(
-      dueDate,
-      lastPaymentDate,
-      paymentExpenses,
-      i + 1,
-    );
-    const paid = fleetCycleIsPaid(dueDate, lastPaymentDate, matched);
-
-    let status: InsuranceScheduleRowStatus;
-    if (paid) {
-      status = 'paid';
-    } else if (due.getTime() < today.getTime()) {
-      status = 'overdue';
-    } else {
-      const daysUntil = Math.round((due.getTime() - today.getTime()) / 86400000);
-      status = daysUntil <= TENURE_PAYMENT_CONFIRM_WINDOW_DAYS ? 'due' : 'future';
-    }
-
-    if (!paid && nextUnpaidIndex < 0) {
-      nextUnpaidIndex = i;
-    }
-
-    rows.push({
-      index: i + 1,
-      label: scheduleLabel(i + 1, cadenceMonths),
-      dueDate,
-      status,
-      expenseId: matched?.id,
-      paidDate: paid && matched ? expensePaidYmd(matched) : undefined,
-      paidAmount: paid ? matched?.amount : undefined,
-      canConfirm: false,
-    });
+  if (!showTenurePaymentSchedule(params.meta)) {
+    return [];
   }
-
-  if (nextUnpaidIndex >= 0) {
-    const row = rows[nextUnpaidIndex];
-    if (row.status === 'overdue' || row.status === 'due') {
-      row.canConfirm = true;
-    }
-  }
-
-  return rows;
+  return buildLedgerCoverageSchedule({
+    expenses: params.expenses,
+    isMatch: (expense) => expense.kind === 'tenure_payment',
+    cadenceMonths: cadenceToMonths(params.meta?.trailerRecurringPaymentCadence),
+    confirmWindowDays: TENURE_PAYMENT_CONFIRM_WINDOW_DAYS,
+    today: params.today,
+  });
 }

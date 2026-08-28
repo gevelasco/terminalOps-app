@@ -367,6 +367,7 @@ export class FleetUnitDetailDrawerFacade {
             }
             if (detail) {
               this.unitSource.set(detail);
+              this.syncCatalogFromFeature();
             }
             this.drawerLoading.set(false);
           },
@@ -426,10 +427,14 @@ export class FleetUnitDetailDrawerFacade {
     if (!unit) {
       return;
     }
-    this.equipmentCatalogSource.set([...this.equipmentFeature.equipment()]);
-    this.hitchedEquipmentSource.set(
-      equipmentAssignedToUnit(this.equipmentFeature.equipment(), unit.id),
-    );
+    const catalog = this.equipmentFeature.equipment();
+    this.equipmentCatalogSource.set([...catalog]);
+    const source = this.unitSource() ?? unit;
+    if (this.equipmentFeature.hydrated()) {
+      this.hitchedEquipmentSource.set(equipmentAssignedToUnit(catalog, unit.id));
+      return;
+    }
+    this.hitchedEquipmentSource.set([...(source.hitchedEquipment ?? [])]);
   }
 
   private applyHostUnitSnapshotWhenRicher(incoming: Unit): void {
@@ -678,7 +683,8 @@ export class FleetUnitDetailDrawerFacade {
     () =>
       this.unitAllowsHitch() &&
       !this.onRoute() &&
-      unitHasHitchSlot(this.equipmentCatalog(), this.unit().id),
+      (!this.equipmentFeature.hydrated() ||
+        unitHasHitchSlot(this.equipmentCatalog(), this.unit().id)),
   );
 
   private readonly hitchBlockedMessage =
@@ -712,9 +718,19 @@ export class FleetUnitDetailDrawerFacade {
     if (!pending) {
       return '';
     }
-    const rear = rearEquipmentToPromoteOnLeadUnhitch(this.equipmentCatalog(), pending);
+    const rear = rearEquipmentToPromoteOnLeadUnhitch(
+      this.hitchWorkingCatalog(),
+      pending,
+    );
     return rear ? formatEquipmentOperationalId(rear) : '';
   });
+
+  private hitchWorkingCatalog(): readonly Equipment[] {
+    if (this.equipmentFeature.hydrated()) {
+      return this.equipmentCatalog();
+    }
+    return this.hitchedEquipment();
+  }
 
   private unitTractorLabel(): string {
     return formatUnitTrailerOperationalId(this.effUnit());
@@ -742,6 +758,7 @@ export class FleetUnitDetailDrawerFacade {
     if (!this.canWriteFleet() || this.hitchBlocked()) {
       return;
     }
+    this.equipmentFeature.loadEquipment();
     this.hitchAddEquipmentId.set('');
     this.detailTab.set('ficha');
     this.editingSection.set('hitch');
@@ -796,7 +813,7 @@ export class FleetUnitDetailDrawerFacade {
     if (!this.canWriteFleet() || this.hitchBlocked()) {
       return;
     }
-    if (unhitchingLeadRequiresRearPromotion(this.equipmentCatalog(), equipment)) {
+    if (unhitchingLeadRequiresRearPromotion(this.hitchWorkingCatalog(), equipment)) {
       this.pendingUnhitchEquipment.set(equipment);
       this.hitchLeadUnhitchConfirmOpen.set(true);
       return;
@@ -821,7 +838,7 @@ export class FleetUnitDetailDrawerFacade {
 
   private commitUnhitchEquipment(equipment: Equipment): void {
     const rearToPromote = rearEquipmentToPromoteOnLeadUnhitch(
-      this.equipmentCatalog(),
+      this.hitchWorkingCatalog(),
       equipment,
     );
     const unhitchDraft: EquipmentPersistDraft = {

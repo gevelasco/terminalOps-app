@@ -32,6 +32,8 @@ export class UnitsService {
   getUnitsPage(options?: {
     includeFleetTenure?: boolean;
     available?: boolean;
+    operationType?: string;
+    containerType?: string;
     page?: number;
     limit?: number;
   }): Observable<ResourceListPage<Unit>> {
@@ -41,6 +43,8 @@ export class UnitsService {
         companyResourceUrl(companyId, 'units', {
           includeFleetTenure: options?.includeFleetTenure,
           available: options?.available,
+          operationType: options?.operationType?.trim() || undefined,
+          containerType: options?.containerType?.trim() || undefined,
           page: options?.page,
           limit: options?.limit,
         }),
@@ -52,6 +56,8 @@ export class UnitsService {
   getUnitsList(options?: {
     includeFleetTenure?: boolean;
     available?: boolean;
+    operationType?: string;
+    containerType?: string;
   }): Observable<Unit[]> {
     return fetchAllResourcePages((page) =>
       this.getUnitsPage({ ...options, page, limit: 100 }),

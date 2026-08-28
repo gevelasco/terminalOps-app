@@ -1,3 +1,5 @@
+import type { OperatorOperationalStatus } from '@shared/models/logistics.models';
+
 const MS_PER_DAY = 86_400_000;
 const OPERATIONAL_TZ = 'America/Mexico_City';
 
@@ -22,13 +24,23 @@ function daysSinceYmd(ymd: string, now = new Date()): number {
   return Math.max(0, nowDay - endDay);
 }
 
-/** Días calendario (MX) desde la última maniobra; sin historial, desde ingreso a la empresa. */
+function operatorIsOnActiveTrip(status: OperatorOperationalStatus | undefined): boolean {
+  return status === 'in_use' || status === 'scheduled';
+}
+
+/**
+ * Días calendario (MX) desde el fin de la última maniobra completada.
+ * En curso / programada: 0. Sin historial: 0 (no usa fecha de ingreso).
+ */
 export function operatorDaysWithoutManeuver(
   lastManeuverOccurredOn: string | undefined,
-  companyHireDate: string | undefined,
+  operatorStatus?: OperatorOperationalStatus,
   now = new Date(),
 ): number {
-  const anchor = lastManeuverOccurredOn?.trim() || companyHireDate?.trim() || '';
+  if (operatorIsOnActiveTrip(operatorStatus)) {
+    return 0;
+  }
+  const anchor = lastManeuverOccurredOn?.trim() || '';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(anchor)) {
     return 0;
   }

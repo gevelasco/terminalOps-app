@@ -18,13 +18,11 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import type { ECElementEvent, EChartsType } from 'echarts/core';
 import type { DestinationRate } from '@shared/models/destination-rate.models';
-import { MexicoPostalCodeService } from '@shared/services/mexico-postal-code.service';
 import { ToSkeletonComponent } from '@shared/ui/to-skeleton/to-skeleton.component';
 import { ensureTripsMapEchartsModules } from '@features/trips/utils/trips-map-chart-modules';
 import { TRIPS_MAP_GEO_NAME } from '@features/trips/utils/trips-map-echarts-option';
 import type { MexicoStatesGeoJson } from '@features/trips/utils/trips-map-state-activity';
 import {
-  cityMunicipalityNeedsEnrichment,
   countDestinationRatesWithCoords,
   destinationRatesInState,
 } from '@features/clients/utils/destination-rates-map-activity';
@@ -52,7 +50,6 @@ import {
 export class DestinationRatesMapComponent implements AfterViewInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly sepomex = inject(MexicoPostalCodeService);
 
   @ViewChild('chartHost', { static: true })
   private readonly chartHost!: ElementRef<HTMLDivElement>;
@@ -65,10 +62,6 @@ export class DestinationRatesMapComponent implements AfterViewInit, OnDestroy {
   readonly rateSelect = output<string>();
 
   private readonly geoJsonSignal = signal<MexicoStatesGeoJson | null>(null);
-  private readonly municipalityByCp = signal<ReadonlyMap<string, string>>(
-    new Map(),
-  );
-  private readonly municipalityLookupInFlight = new Set<string>();
 
   readonly stateByRateId = computed(() =>
     buildDestinationRateStateById(this.rates(), this.geoJsonSignal()),
@@ -102,11 +95,7 @@ export class DestinationRatesMapComponent implements AfterViewInit, OnDestroy {
   });
 
   readonly tableRows = computed(() =>
-    buildDestinationRateTableRows(
-      this.tableSourceRates(),
-      this.stateByRateId(),
-      this.municipalityByCp(),
-    ),
+    buildDestinationRateTableRows(this.tableSourceRates(), this.stateByRateId()),
   );
 
   readonly geoReady = signal(false);
@@ -137,13 +126,6 @@ export class DestinationRatesMapComponent implements AfterViewInit, OnDestroy {
       if (destinationRatesInState(filtered, stateName, geo).length === 0) {
         this.selectedState.set(null);
       }
-    });
-
-    effect(() => {
-      this.enqueueMunicipalityEnrichment(
-        this.tableSourceRates(),
-        this.stateByRateId(),
-      );
     });
   }
 
@@ -183,62 +165,6 @@ export class DestinationRatesMapComponent implements AfterViewInit, OnDestroy {
       return false;
     }
     return hovered >= spanStart && hovered < spanStart + span;
-  }
-
-  private enqueueMunicipalityEnrichment(
-    rates: readonly DestinationRate[],
-    stateById: ReadonlyMap<string, string>,
-  ): void {
-    const known = this.municipalityByCp();
-    const pending = new Set<string>();
-    for (const rate of rates) {
-      const cp = rate.postalCode.trim();
-      if (cp.length !== 5) {
-        continue;
-      }
-      if (known.has(cp) || this.municipalityLookupInFlight.has(cp)) {
-        continue;
-      }
-      const state = stateById.get(rate.id);
-      if (
-        !cityMunicipalityNeedsEnrichment(rate.cityMunicipality, state)
-      ) {
-        continue;
-      }
-      pending.add(cp);
-    }
-    for (const cp of pending) {
-      this.lookupMunicipalityForCp(cp);
-    }
-  }
-
-  private lookupMunicipalityForCp(cp: string): void {
-    this.municipalityLookupInFlight.add(cp);
-    this.sepomex
-      .lookupByPostalCode(cp)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (rows) => {
-          this.municipalityLookupInFlight.delete(cp);
-          const municipality =
-            rows.find((r) => r.municipality.trim())?.municipality.trim() ||
-            rows.find((r) => r.city.trim())?.city.trim() ||
-            '';
-          this.municipalityByCp.update((prev) => {
-            const next = new Map(prev);
-            next.set(cp, municipality);
-            return next;
-          });
-        },
-        error: () => {
-          this.municipalityLookupInFlight.delete(cp);
-          this.municipalityByCp.update((prev) => {
-            const next = new Map(prev);
-            next.set(cp, '');
-            return next;
-          });
-        },
-      });
   }
 
   private async bootstrapChart(): Promise<void> {

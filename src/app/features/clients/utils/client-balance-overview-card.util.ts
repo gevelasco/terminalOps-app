@@ -1,3 +1,4 @@
+import type { ClientBalanceOverviewItem } from '@core/services/api/clients';
 import {
   clientBalanceCollectionStatus,
   clientBalanceHighlightedPayment,
@@ -9,7 +10,6 @@ import { deriveClientCommercialHealthFromSummary } from '@features/clients/utils
 import { clientCommercialHealthLabel } from '@shared/catalogs/client-form-options';
 import { clientCommercialPillClass } from '@shared/utils/client-commercial-pill';
 import { maneuverCodePrefixFromClientName } from '@shared/utils/maneuver-code.util';
-import type { Client } from '@shared/models/client.models';
 import type { ToBadgeVariant } from '@shared/ui/to-badge/to-badge.component';
 import type { ToIconName } from '@shared/ui/to-icon/to-icon-paths';
 
@@ -30,19 +30,32 @@ export interface ClientBalanceOverviewCardView {
   footerAmountLabel: string;
 }
 
-/** Proyección visual de un `ClientBalanceSummary` ya calculado. */
+function summaryFromOverviewItem(
+  item: ClientBalanceOverviewItem,
+): ClientBalanceSummary {
+  return {
+    ...emptyClientBalanceSummary(),
+    hasTrips: item.summary.hasTrips,
+    completedCount: item.summary.completedCount,
+    receivable: item.summary.receivable,
+    nextDueYmd: item.summary.nextDueYmd,
+    upcomingPayments: item.summary.upcomingPayments,
+  };
+}
+
+/** Proyección visual de un item de `/clients/balance-overview`. */
 export function buildClientBalanceOverviewCard(
-  client: Client,
-  balance: ClientBalanceSummary,
+  item: ClientBalanceOverviewItem,
 ): ClientBalanceOverviewCardView {
+  const balance = summaryFromOverviewItem(item);
   const status = clientBalanceCollectionStatus(balance);
   const payment = clientBalanceHighlightedPayment(balance);
   const commercialHealth = deriveClientCommercialHealthFromSummary(balance);
 
   return {
-    id: client.id,
-    name: client.name,
-    codePrefix: maneuverCodePrefixFromClientName(client.name),
+    id: item.clientId,
+    name: item.name,
+    codePrefix: maneuverCodePrefixFromClientName(item.name),
     maneuverCountLabel: balance.completedCount.toLocaleString('es-MX'),
     pendingBalance: balance.receivable,
     pendingBalanceLabel: formatClientBalanceMoney(balance.receivable),
@@ -58,13 +71,9 @@ export function buildClientBalanceOverviewCard(
 }
 
 export function buildClientBalanceOverviewCards(
-  clients: readonly Client[],
-  summariesByClientId: Readonly<Record<string, ClientBalanceSummary>>,
+  items: readonly ClientBalanceOverviewItem[],
 ): ClientBalanceOverviewCardView[] {
-  return clients.map((client) => {
-    const balance = summariesByClientId[client.id] ?? emptyClientBalanceSummary();
-    return buildClientBalanceOverviewCard(client, balance);
-  });
+  return items.map((item) => buildClientBalanceOverviewCard(item));
 }
 
 export function clientBalanceOverviewMatchesQuery(

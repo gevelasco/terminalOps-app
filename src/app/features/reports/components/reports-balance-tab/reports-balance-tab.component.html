@@ -199,9 +199,9 @@
     <section class="reports-balance-panel reports-balance-panel--wide">
       <header class="reports-balance-panel__head">
         <div>
-          <h2 class="reports-balance-panel__title">Cuentas por pagar en el periodo</h2>
+          <h2 class="reports-balance-panel__title">Cuentas por pagar</h2>
           <p class="reports-balance-panel__subtitle">
-            Obligaciones programadas y gastos a crédito · {{ periodSubtitle() }}
+            Pendientes del mes y vencidos sin confirmar · {{ periodSubtitle() }}
           </p>
         </div>
       </header>
@@ -249,7 +249,7 @@
             </tfoot>
           </table>
         } @else {
-          <p class="reports-balance-panel__empty">Sin obligaciones en el periodo.</p>
+          <p class="reports-balance-panel__empty">Sin pagos pendientes ni vencidos.</p>
         }
       </div>
     </section>

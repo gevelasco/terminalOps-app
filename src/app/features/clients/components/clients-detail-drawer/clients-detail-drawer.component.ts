@@ -10,7 +10,6 @@ import { ToIconComponent } from '@shared/ui/to-icon/to-icon.component';
 import { ToSegmentControlComponent } from '@shared/ui/to-segment-control/to-segment-control.component';
 import { ToSideDrawerComponent } from '@shared/ui/to-side-drawer/to-side-drawer.component';
 import { ToStatusPillComponent } from '@shared/ui/to-status-pill/to-status-pill.component';
-import { OPERATION_CONFIGURATION_PROVIDERS } from '@shared/services/operation-configuration.providers';
 import { ClientsDetailDrawerFacade } from './clients-detail-drawer.facade';
 import { ClientsDetailBalanceTabComponent } from './tabs/clients-detail-balance-tab.component';
 import { ClientsDetailDetailsTabComponent } from './tabs/clients-detail-details-tab.component';
@@ -18,10 +17,7 @@ import { ClientsDetailDetailsTabComponent } from './tabs/clients-detail-details-
 @Component({
   selector: 'app-clients-detail-drawer',
   standalone: true,
-  providers: [
-    ClientsDetailDrawerFacade,
-    ...OPERATION_CONFIGURATION_PROVIDERS,
-  ],
+  providers: [ClientsDetailDrawerFacade],
   imports: [
     ToSideDrawerComponent,
     ToIconComponent,

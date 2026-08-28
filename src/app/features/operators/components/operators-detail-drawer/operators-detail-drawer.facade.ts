@@ -58,7 +58,6 @@ import { type ToBadgeVariant } from '@shared/ui/to-badge/to-badge.component';
 import { type ToSegmentTab } from '@shared/ui/to-segment-control/to-segment-control.component';
 import type { ToSelectOption } from '@shared/ui/to-select/to-select.component';
 import { OperatorsFeatureService } from '@features/operators/services/operators.service';
-import { deriveOperatorOperationalStatus } from '@features/trips/utils/trip-derived-operational-status';
 import {
   catchError,
   concat,
@@ -192,10 +191,9 @@ export class OperatorsDetailDrawerFacade {
     () => this.operationSummarySignal() ?? EMPTY_OPERATOR_OPERATION_SUMMARY,
   );
 
-  readonly derivedOperationalStatus = computed((): OperatorOperationalStatus => {
-    const operator = this.operator();
-    return deriveOperatorOperationalStatus(operator, this.operationalSync.trips());
-  });
+  readonly derivedOperationalStatus = computed(
+    (): OperatorOperationalStatus => this.operator().status,
+  );
 
   /** En curso lo pone el sistema; no se edita a mano. */
   readonly operationalStatusEditLocked = computed(
@@ -311,11 +309,12 @@ export class OperatorsDetailDrawerFacade {
     });
 
     effect((onCleanup) => {
-      const o = this.operatorsFeature.selectedOperator();
+      const operatorId = this.operatorsFeature.selectedOperatorId();
       const tab = this.drawerTab();
       const from = this.periodFrom();
       const to = this.periodTo();
-      if (!o) {
+      const epoch = this.operationalSync.operatorsMutationEpoch();
+      if (!operatorId) {
         this.operationSummarySignal.set(null);
         this.operationSummaryCacheKey = null;
         this.drawerLoading.set(false);
@@ -325,7 +324,7 @@ export class OperatorsDetailDrawerFacade {
         this.drawerLoading.set(false);
         return;
       }
-      const cacheKey = `${o.id}:${from}:${to}`;
+      const cacheKey = `${operatorId}:${from}:${to}:${epoch}`;
       if (
         this.operationSummaryCacheKey === cacheKey &&
         this.operationSummarySignal() != null
@@ -335,26 +334,15 @@ export class OperatorsDetailDrawerFacade {
       }
       this.drawerLoading.set(true);
       const sub = this.operatorsApi
-        .getOperatorOperationSummary(o.id, from, to)
+        .getOperatorOperationSummary(operatorId, from, to)
         .pipe(catchError(() => of(EMPTY_OPERATOR_OPERATION_SUMMARY)))
         .subscribe((summary) => {
           this.operationSummaryCacheKey = cacheKey;
           this.operationSummarySignal.set(summary);
-          this.syncOperatorListPaymentSummary(o.id, summary);
+          this.syncOperatorListPaymentSummary(operatorId, summary);
           this.drawerLoading.set(false);
         });
       onCleanup(() => sub.unsubscribe());
-    });
-
-    let operatorsPaymentsEpoch = this.operationalSync.operatorsMutationEpoch();
-    effect(() => {
-      const epoch = this.operationalSync.operatorsMutationEpoch();
-      if (epoch === operatorsPaymentsEpoch) {
-        return;
-      }
-      operatorsPaymentsEpoch = epoch;
-      this.operationSummarySignal.set(null);
-      this.operationSummaryCacheKey = null;
     });
   }
 
@@ -1017,18 +1005,14 @@ export class OperatorsDetailDrawerFacade {
   }
 
   private editStatusFromOperator(o: Operator): string {
-    const derived = deriveOperatorOperationalStatus(
-      o,
-      this.operationalSync.trips(),
-    );
-    if (derived === 'in_use') {
+    if (o.status === 'in_use') {
       return 'in_use';
     }
-    if (derived === 'inactive' || o.isActive === false) {
+    if (o.status === 'inactive' || o.isActive === false) {
       return 'inactive';
     }
-    if (derived === 'leave' || derived === 'incapacitated') {
-      return derived;
+    if (o.status === 'leave' || o.status === 'incapacitated') {
+      return o.status;
     }
     return 'available';
   }

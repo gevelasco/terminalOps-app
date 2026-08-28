@@ -72,6 +72,12 @@ describe('tripEquipmentDisplayAt', () => {
 });
 
 describe('tripEquipmentPlateAt', () => {
+  it('returns the plate from the trip payload without a catalog', () => {
+    expect(
+      tripEquipmentPlateAt({ equipmentIds: ['3'], equipmentPlates: ['REM-01'] }, 0),
+    ).toBe('REM-01');
+  });
+
   it('returns the plate from the catalog', () => {
     expect(
       tripEquipmentPlateAt(

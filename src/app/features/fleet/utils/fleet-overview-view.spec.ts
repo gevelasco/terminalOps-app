@@ -1,5 +1,6 @@
 import type { FleetOverviewItemDto } from '@shared/models/api/fleet-overview.model';
 import {
+  attachOverviewCompliance,
   overviewCardEntryFromDto,
   overviewCardEntryFromEquipmentRow,
   overviewConvoySortKind,
@@ -98,6 +99,25 @@ describe('overviewCardEntryFromDto', () => {
     );
     expect(entry.convoy.label).toBe('Sencillo');
     expect(entry.convoy.code).toBe('sencillo');
+  });
+});
+
+describe('attachOverviewCompliance', () => {
+  it('uses overview maintenance when unit/equipment lists are empty', () => {
+    const entry = overviewCardEntryFromDto(
+      unitItem({
+        hitchedEquipment: [],
+        maintenance: {
+          insuranceRenewal: 'due',
+          inspectionRenewal: 'soon',
+        },
+      }),
+    );
+    const withCompliance = attachOverviewCompliance(entry, [], []);
+    expect(withCompliance.compliance?.insBucket).toBe('due');
+    expect(withCompliance.compliance?.verifBucket).toBe('soon');
+    expect(withCompliance.compliance?.insLabel).toBe('Vencido');
+    expect(withCompliance.compliance?.verifLabel).toBe('Próximo');
   });
 });
 

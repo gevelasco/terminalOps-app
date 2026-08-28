@@ -20,6 +20,12 @@ function resolveFleetEntityTab(item: NotificationFeedItem): string | null {
   if (title.includes('pago de gps') || title.includes('pago de seguro')) {
     return 'cob';
   }
+  if (
+    title.includes('pago de verificación') ||
+    title.includes('cuota de financiamiento')
+  ) {
+    return 'cob';
+  }
   return null;
 }
 

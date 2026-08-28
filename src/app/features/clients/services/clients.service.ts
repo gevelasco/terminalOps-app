@@ -5,7 +5,6 @@ import {
   map,
   of,
   Subscription,
-  switchMap,
   type Observable,
 } from 'rxjs';
 import { ClientsService as ClientsApiService } from '@services/api/clients';
@@ -13,8 +12,7 @@ import type { Client, CreateClientPayload } from '@shared/models/client.models';
 import { createRequestGeneration } from '@shared/utils/request-generation';
 
 /**
- * Fuente única de verdad del feature Clientes (lista en memoria + selección).
- * GET /companies/{companyId}/clients — al entrar a la tab Clientes (una vez por visita al módulo).
+ * Clientes en memoria: stubs del overview + detalle por id al abrir el drawer.
  * Alcance: ruta `/comercial/clients`.
  */
 @Injectable()
@@ -25,11 +23,10 @@ export class ClientsFeatureService {
 
   private readonly _clients = signal<readonly Client[]>([]);
   private readonly _selectedClientId = signal<string | null>(null);
-  private readonly _loading = signal(false);
+  private readonly _detailLoading = signal(false);
 
-  private initialLoadStarted = false;
   private disposed = false;
-  private fetchSub: Subscription | null = null;
+  private detailSub: Subscription | null = null;
 
   constructor() {
     this.destroyRef.onDestroy(() => this.dispose());
@@ -44,24 +41,28 @@ export class ClientsFeatureService {
     }
     return this._clients().find((c) => c.id === id) ?? null;
   });
-  readonly loading = this._loading.asReadonly();
+  readonly detailLoading = this._detailLoading.asReadonly();
 
-  loadClients(): void {
+  applyOverviewRows(rows: readonly { id: string; name: string }[]): void {
     if (this.disposed) {
       return;
     }
-    if (this.initialLoadStarted) {
-      return;
+    const previous = new Map(this._clients().map((client) => [client.id, client]));
+    const next = rows.map((row) => {
+      const existing = previous.get(row.id);
+      if (!existing) {
+        return { id: row.id, name: row.name };
+      }
+      if (existing.name === row.name) {
+        return existing;
+      }
+      return { ...existing, name: row.name };
+    });
+    this._clients.set(next);
+    const selected = this._selectedClientId();
+    if (selected && !next.some((client) => client.id === selected)) {
+      this._selectedClientId.set(null);
     }
-    this.initialLoadStarted = true;
-    this.runFetch();
-  }
-
-  refreshClients(): void {
-    if (this.disposed) {
-      return;
-    }
-    this.runFetch();
   }
 
   selectClient(clientId: string): void {
@@ -70,23 +71,37 @@ export class ClientsFeatureService {
       return;
     }
     this._selectedClientId.set(id);
+    this.hydrateSelectedDetail(id);
   }
 
   clearSelection(): void {
+    this.detailSub?.unsubscribe();
+    this.detailSub = null;
+    this._detailLoading.set(false);
     this._selectedClientId.set(null);
   }
 
+  replaceClient(updated: Client): void {
+    const exists = this._clients().some((client) => client.id === updated.id);
+    this._clients.update((list) =>
+      exists
+        ? list.map((client) => (client.id === updated.id ? updated : client))
+        : [updated, ...list],
+    );
+    if (this._selectedClientId() === updated.id) {
+      this._selectedClientId.set(updated.id);
+    }
+  }
+
   updateClient(client: Client): Observable<Client> {
-    const keepId = this._selectedClientId() ?? client.id;
     const requestId = this.requestGen.next();
     return this.clientsApi.patchClientById(client).pipe(
-      switchMap(() => this.fetchList()),
-      map((list) => {
+      map((updated) => {
         if (!this.canApplyResponse(requestId)) {
-          return this._clients().find((c) => c.id === keepId) ?? client;
+          return updated;
         }
-        this.applyList(list, keepId);
-        return this._clients().find((c) => c.id === keepId) ?? client;
+        this.replaceClient(updated);
+        return updated;
       }),
     );
   }
@@ -94,48 +109,57 @@ export class ClientsFeatureService {
   createClient(payload: CreateClientPayload): Observable<Client> {
     const requestId = this.requestGen.next();
     return this.clientsApi.postClient(payload).pipe(
-      switchMap((created) =>
-        this.fetchList().pipe(
-          map((list) => {
-            if (!this.canApplyResponse(requestId)) {
-              return created;
-            }
-            this.applyList(list, null);
-            return this._clients().find((c) => c.id === created.id) ?? created;
-          }),
-        ),
-      ),
+      map((created) => {
+        if (!this.canApplyResponse(requestId)) {
+          return created;
+        }
+        this.replaceClient(created);
+        return created;
+      }),
     );
   }
 
-  private runFetch(): void {
-    if (this.disposed) {
+  refreshClientById(clientId: string): void {
+    const id = clientId.trim();
+    if (!id || this.disposed) {
       return;
     }
-    const requestId = this.requestGen.next();
-    this.fetchSub?.unsubscribe();
-    this._loading.set(true);
-    this.fetchSub = this.fetchList()
+    this.clientsApi
+      .getClientById(id)
+      .pipe(catchError(() => of(null)))
+      .subscribe((detail) => {
+        if (this.disposed || !detail) {
+          return;
+        }
+        this.replaceClient(detail);
+      });
+  }
+
+  private hydrateSelectedDetail(clientId: string): void {
+    const id = clientId.trim();
+    if (!id || this.disposed) {
+      return;
+    }
+    this.detailSub?.unsubscribe();
+    this._detailLoading.set(true);
+    this.detailSub = this.clientsApi
+      .getClientById(id)
       .pipe(
+        catchError(() => of(null)),
         finalize(() => {
-          if (this.requestGen.isCurrent(requestId)) {
-            this._loading.set(false);
+          if (this._selectedClientId() === id) {
+            this._detailLoading.set(false);
           }
         }),
       )
-      .subscribe({
-        next: (list) => {
-          if (!this.canApplyResponse(requestId)) {
-            return;
-          }
-          this.applyList(list, this._selectedClientId());
-        },
-        error: () => {
-          if (!this.canApplyResponse(requestId)) {
-            return;
-          }
-          this.applyList([], this._selectedClientId());
-        },
+      .subscribe((detail) => {
+        if (this.disposed || this._selectedClientId() !== id) {
+          return;
+        }
+        if (!detail) {
+          return;
+        }
+        this.replaceClient(detail);
       });
   }
 
@@ -143,34 +167,16 @@ export class ClientsFeatureService {
     return !this.disposed && this.requestGen.isCurrent(requestId);
   }
 
-  private fetchList(): Observable<Client[]> {
-    return this.clientsApi.getClientsList().pipe(catchError(() => of([] as Client[])));
-  }
-
-  private applyList(list: Client[], selectedId: string | null): void {
-    this._clients.set(list);
-    if (!selectedId) {
-      return;
-    }
-    if (list.some((c) => c.id === selectedId)) {
-      this._selectedClientId.set(selectedId);
-      return;
-    }
-    this._selectedClientId.set(null);
-  }
-
-  /** Destrucción terminal al salir del feature (no reutilizar instancia). */
   dispose(): void {
     if (this.disposed) {
       return;
     }
     this.disposed = true;
     this.requestGen.invalidate();
-    this.fetchSub?.unsubscribe();
-    this.fetchSub = null;
+    this.detailSub?.unsubscribe();
+    this.detailSub = null;
     this._clients.set([]);
     this._selectedClientId.set(null);
-    this._loading.set(false);
-    this.initialLoadStarted = false;
+    this._detailLoading.set(false);
   }
 }

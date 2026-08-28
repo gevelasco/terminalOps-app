@@ -38,6 +38,8 @@ export class TripsFormCatalogService {
   private disposed = false;
   private clientsStarted = false;
   private fleetStarted = false;
+  private fleetFilterKey = '';
+  private fleetSub: Subscription | null = null;
   private operatorsStarted = false;
   private readonly loadSubs: Subscription[] = [];
   private complianceSub: Subscription | null = null;
@@ -83,34 +85,74 @@ export class TripsFormCatalogService {
   }
 
   /**
-   * Unidades disponibles (`?available=true`); se dispara al enfocar el input.
-   * Cada unidad ya incluye sus equipos enganchados (`hitchedEquipment`),
-   * por lo que no se necesita el catálogo de /equipment.
+   * Unidades asignables (`?available=true`).
+   * Sin filtro de convoy/contenedor: todas las aptas para una maniobra.
+   * Con filtro: solo las compatibles con esa configuración.
    */
-  ensureUnitsLoaded(): void {
-    if (this.disposed || this.fleetStarted) {
+  ensureUnitsLoaded(filter?: {
+    operationType?: string;
+    containerType?: string;
+  }): void {
+    this.loadAssignableUnits(filter, { requireStarted: false, force: false });
+  }
+
+  /** Siempre vuelve a pedir el listado (cada foco del input de unidad). */
+  reloadUnits(filter?: {
+    operationType?: string;
+    containerType?: string;
+  }): void {
+    this.loadAssignableUnits(filter, { requireStarted: false, force: true });
+  }
+
+  /** Recarga si el catálogo ya se pidió y cambió configuración o contenedor. */
+  syncLoadedUnitsFilter(filter: {
+    operationType?: string;
+    containerType?: string;
+  }): void {
+    this.loadAssignableUnits(filter, { requireStarted: true, force: false });
+  }
+
+  private loadAssignableUnits(
+    filter: { operationType?: string; containerType?: string } | undefined,
+    options: { requireStarted: boolean; force: boolean },
+  ): void {
+    if (this.disposed) {
+      return;
+    }
+    if (options.requireStarted && !this.fleetStarted) {
+      return;
+    }
+    const operationType = filter?.operationType?.trim() ?? '';
+    const containerType = filter?.containerType?.trim() ?? '';
+    const key = `${operationType}|${containerType}`;
+    if (!options.force && this.fleetStarted && this.fleetFilterKey === key) {
       return;
     }
     this.fleetStarted = true;
+    this.fleetFilterKey = key;
     const requestId = this.requestGen.next();
     this._fleetLoading.set(true);
-    this.loadSubs.push(
-      this.unitsApi
-        .getUnitsList({ available: true })
-        .pipe(
-          catchError(() => of([] as Unit[])),
-          finalize(() => {
-            if (this.requestGen.isCurrent(requestId)) {
-              this._fleetLoading.set(false);
-            }
-          }),
-        )
-        .subscribe((rows) => {
-          if (this.canApplyResponse(requestId)) {
-            this._units.set(rows);
+    this._units.set([]);
+    this.fleetSub?.unsubscribe();
+    this.fleetSub = this.unitsApi
+      .getUnitsList({
+        available: true,
+        operationType: operationType || undefined,
+        containerType: containerType || undefined,
+      })
+      .pipe(
+        catchError(() => of([] as Unit[])),
+        finalize(() => {
+          if (this.requestGen.isCurrent(requestId)) {
+            this._fleetLoading.set(false);
           }
         }),
-    );
+      )
+      .subscribe((rows) => {
+        if (this.canApplyResponse(requestId)) {
+          this._units.set(rows);
+        }
+      });
   }
 
   /** Operadores disponibles (`?available=true`); se dispara al enfocar el input. */
@@ -232,6 +274,8 @@ export class TripsFormCatalogService {
       sub.unsubscribe();
     }
     this.loadSubs.length = 0;
+    this.fleetSub?.unsubscribe();
+    this.fleetSub = null;
     this.complianceSub?.unsubscribe();
     this.complianceSub = null;
     this.clearCatalogSignals();

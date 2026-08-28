@@ -1,5 +1,4 @@
 import type { Expense } from '@shared/models/logistics.models';
-import { expenseIncurredDateInput } from '@features/expenses/utils/expenses-form.util';
 import {
   GPS_PAYMENT_CONFIRM_WINDOW_DAYS,
   cadenceToMonths,
@@ -13,9 +12,9 @@ import {
   type InsuranceScheduleRowStatus,
 } from './fleet-insurance-schedule.util';
 import {
-  fleetCycleIsPaid,
-  fleetPaymentExpenseForCycle,
-} from './fleet-payment-schedule-match.util';
+  buildLedgerCoverageSchedule,
+  coverageComplianceFromSchedule,
+} from './fleet-ledger-coverage-schedule.util';
 
 export type GpsScheduleRow = InsuranceScheduleRow;
 export type GpsScheduleRowStatus = InsuranceScheduleRowStatus;
@@ -96,107 +95,21 @@ function policyYearStart(contractDate: Date, today: Date): Date {
   return addMonths(contractDate, yearIndex * 12);
 }
 
-function scheduleLabel(index: number, cadenceMonths: number): string {
-  if (cadenceMonths === 1) {
-    return `Mes ${index}`;
-  }
-  if (cadenceMonths === 3) {
-    return `T${index}`;
-  }
-  return `Pago ${index}`;
-}
-
-function isGpsPaymentExpense(e: Expense): boolean {
-  const desc = (e.description ?? '').trim();
-  return (
-    e.kind === 'gps' &&
-    (desc.startsWith('Pago de GPS') || desc.startsWith('Contratación de GPS'))
-  );
-}
-
-function expensePaidYmd(e: Expense): string {
-  if (e.paidAt) {
-    return expenseIncurredDateInput(e.paidAt);
-  }
-  return expenseIncurredDateInput(e.incurredAt);
-}
-
 export function buildGpsPaymentSchedule(params: {
   meta: FleetGpsPaymentMeta | undefined;
   expenses: readonly Expense[];
   today?: Date;
 }): GpsScheduleRow[] {
-  const meta = params.meta;
-  if (!gpsFleetMetaIsActive(meta)) {
+  if (!showGpsPaymentSchedule(params.meta)) {
     return [];
   }
-  const cadenceMonths = cadenceToMonths(meta?.gpsPaymentCadence);
-  const periodCount = gpsSchedulePeriodCount(meta?.gpsPaymentCadence);
-  const contract = meta?.gpsContractDate?.trim();
-  if (!contract || periodCount === 0) {
-    return [];
-  }
-
-  const contractDate = parseYmd(contract);
-  if (!contractDate) {
-    return [];
-  }
-
-  const today = startOfToday(params.today ?? new Date());
-  const yearStart = policyYearStart(contractDate, today);
-  const stepMonths = cadenceMonths === 1 ? 1 : 3;
-
-  const paymentExpenses = params.expenses.filter(isGpsPaymentExpense);
-  const lastPaymentDate = meta?.gpsLastPaymentDate?.trim();
-
-  const rows: GpsScheduleRow[] = [];
-  let nextUnpaidIndex = -1;
-
-  for (let i = 0; i < periodCount; i += 1) {
-    const due = addMonths(yearStart, i * stepMonths);
-    const dueDate = formatYmd(due);
-    const matched = fleetPaymentExpenseForCycle(
-      dueDate,
-      lastPaymentDate,
-      paymentExpenses,
-      i + 1,
-    );
-    const paid = fleetCycleIsPaid(dueDate, lastPaymentDate, matched);
-
-    let status: GpsScheduleRowStatus;
-    if (paid) {
-      status = 'paid';
-    } else if (due.getTime() < today.getTime()) {
-      status = 'overdue';
-    } else {
-      const daysUntil = Math.round((due.getTime() - today.getTime()) / 86400000);
-      status = daysUntil <= GPS_PAYMENT_CONFIRM_WINDOW_DAYS ? 'due' : 'future';
-    }
-
-    if (!paid && nextUnpaidIndex < 0) {
-      nextUnpaidIndex = i;
-    }
-
-    rows.push({
-      index: i + 1,
-      label: scheduleLabel(i + 1, cadenceMonths),
-      dueDate,
-      status,
-      expenseId: matched?.id,
-      paidDate: paid && matched ? expensePaidYmd(matched) : undefined,
-      paidAmount: paid ? matched?.amount : undefined,
-      canConfirm: false,
-    });
-  }
-
-  if (nextUnpaidIndex >= 0) {
-    const row = rows[nextUnpaidIndex];
-    if (row.status === 'overdue' || row.status === 'due') {
-      row.canConfirm = true;
-    }
-  }
-
-  return rows;
+  return buildLedgerCoverageSchedule({
+    expenses: params.expenses,
+    isMatch: (expense) => expense.kind === 'gps',
+    cadenceMonths: cadenceToMonths(params.meta?.gpsPaymentCadence),
+    confirmWindowDays: GPS_PAYMENT_CONFIRM_WINDOW_DAYS,
+    today: params.today,
+  });
 }
 
 export const compactGpsPaymentSchedule = compactInsurancePaymentSchedule;
@@ -225,26 +138,5 @@ export function gpsPaymentCompliance(
     expenses: options?.expenses ?? [],
     today: options?.today,
   });
-  if (rows.length === 0) {
-    return null;
-  }
-
-  const nextUnpaid = rows.find((row) => row.status !== 'paid');
-  if (!nextUnpaid) {
-    return { bucket: 'ok', daysUntil: null };
-  }
-
-  const due = parseYmd(nextUnpaid.dueDate);
-  const today = startOfToday(options?.today ?? new Date());
-  const daysUntil = due
-    ? Math.round((due.getTime() - today.getTime()) / 86400000)
-    : null;
-
-  if (nextUnpaid.status === 'overdue') {
-    return { bucket: 'due', daysUntil };
-  }
-  if (nextUnpaid.status === 'due') {
-    return { bucket: 'soon', daysUntil };
-  }
-  return { bucket: 'ok', daysUntil };
+  return coverageComplianceFromSchedule(rows, options?.today);
 }

@@ -151,10 +151,14 @@ export function tripEquipmentDisplayAt(
 }
 
 export function tripEquipmentPlateAt(
-  trip: Pick<Trip, 'equipmentIds'>,
+  trip: Pick<Trip, 'equipmentIds' | 'equipmentPlates'>,
   index: number,
   equipmentCatalog?: readonly Equipment[],
 ): string {
+  const fromTrip = trip.equipmentPlates?.[index]?.trim();
+  if (fromTrip) {
+    return fromTrip;
+  }
   const id = resourceIdKey(trip.equipmentIds?.[index]);
   if (!id || !equipmentCatalog?.length) {
     return '—';

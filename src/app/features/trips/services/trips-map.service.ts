@@ -21,6 +21,8 @@ export class TripsMapService {
   private readonly _meta = signal<TripsMapMeta | null>(null);
   private readonly _loading = signal(false);
   private readonly _error = signal(false);
+  /** True tras el primer GET /trips/map (éxito o error). */
+  private readonly _loaded = signal(false);
 
   private fetchSub: Subscription | null = null;
   private disposed = false;
@@ -34,6 +36,7 @@ export class TripsMapService {
   readonly meta = this._meta.asReadonly();
   readonly loading = this._loading.asReadonly();
   readonly error = this._error.asReadonly();
+  readonly loaded = this._loaded.asReadonly();
 
   readonly hasData = computed(() => this._items().length > 0);
 
@@ -69,6 +72,7 @@ export class TripsMapService {
     this._meta.set(null);
     this._loading.set(false);
     this._error.set(false);
+    this._loaded.set(false);
     this.initialLoadStarted = false;
   }
 
@@ -100,7 +104,11 @@ export class TripsMapService {
         }),
       )
       .subscribe((response) => {
-        if (!this.canApplyResponse(requestId) || !response) {
+        if (!this.canApplyResponse(requestId)) {
+          return;
+        }
+        this._loaded.set(true);
+        if (!response) {
           return;
         }
         this._items.set(response.items);
@@ -120,6 +128,7 @@ export class TripsMapService {
     this._meta.set(null);
     this._loading.set(false);
     this._error.set(false);
+    this._loaded.set(false);
     this.initialLoadStarted = false;
   }
 

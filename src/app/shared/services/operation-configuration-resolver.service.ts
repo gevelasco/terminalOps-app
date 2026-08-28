@@ -55,11 +55,20 @@ export class OperationConfigurationResolverService implements OperationConfigura
   }
 
   contextFromTrip(
-    trip: Pick<Trip, 'operationType' | 'operationConfigurationId'>,
+    trip: Pick<
+      Trip,
+      | 'operationType'
+      | 'operationConfigurationId'
+      | 'operationConfigurationName'
+      | 'operationConfigurationMaxEquipmentCount'
+    >,
   ): OperationConfigurationContext {
     return {
       operationConfigurationId: trip.operationConfigurationId,
       code: trip.operationType,
+      nameSnapshot: trip.operationConfigurationName,
+      maxEquipmentCountOverride:
+        trip.operationConfigurationMaxEquipmentCount ?? undefined,
     };
   }
 
@@ -85,6 +94,14 @@ export class OperationConfigurationResolverService implements OperationConfigura
           ? row['operationConfigurationId']
           : undefined,
       code: String(row[codeField] ?? ''),
+      nameSnapshot:
+        typeof row['operationConfigurationName'] === 'string'
+          ? row['operationConfigurationName']
+          : undefined,
+      maxEquipmentCountOverride:
+        typeof row['operationConfigurationMaxEquipmentCount'] === 'number'
+          ? row['operationConfigurationMaxEquipmentCount']
+          : undefined,
     };
   }
 

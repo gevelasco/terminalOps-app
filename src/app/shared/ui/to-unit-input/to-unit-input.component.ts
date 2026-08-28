@@ -26,6 +26,7 @@ let seq = 0;
 
 export type UnitPickedEvent = {
   unitId: string;
+  unit: Unit;
   operationType: TripOperationType;
   equipmentIds: string[];
 };
@@ -44,6 +45,9 @@ export class ToUnitInputComponent {
 
   readonly label = input<string>('');
   readonly placeholder = input<string>('');
+  readonly emptyMessage = input(
+    'No hay unidades disponibles (en maniobra o no activas).',
+  );
 
   readonly prefetchMode = input(false);
   readonly unitsData = input<readonly Unit[]>([]);
@@ -113,10 +117,10 @@ export class ToUnitInputComponent {
     });
   }
 
-  /** Si el catálogo llegó mientras el campo tenía foco, abre la lista sin otro clic. */
+  /** Si el catálogo llegó mientras el campo tenía foco, abre la lista (también vacía). */
   private maybeOpenIfFocused(): void {
     const el = this.fieldInput()?.nativeElement;
-    if (el && document.activeElement === el && !this.loading() && this.rows().length > 0) {
+    if (el && document.activeElement === el && !this.loading()) {
       this.open.set(true);
     }
   }
@@ -147,7 +151,7 @@ export class ToUnitInputComponent {
 
   onFocus(): void {
     this.focusNotify.emit();
-    if (!this.loading() && this.rows().length > 0) {
+    if (!this.loading()) {
       this.open.set(true);
     }
   }
@@ -172,6 +176,7 @@ export class ToUnitInputComponent {
       this.open.set(false);
       this.unitPicked.emit({
         unitId: row.unit.id,
+        unit: row.unit,
         operationType: row.operationType,
         equipmentIds: row.equipmentIds,
       });

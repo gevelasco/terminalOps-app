@@ -6,9 +6,11 @@ import { FleetOverviewFeatureService } from './fleet-overview.service';
 import { UnitsFeatureService } from './units.service';
 import type { FleetBrandType } from '@shared/models/api/fleet-catalog.model';
 
+export type FleetModuleTab = 'overview' | 'units' | 'equipment';
+
 /**
- * Orquestador del módulo Flota: unidades + equipo al entrar;
- * overview solo si hay activos que mostrar.
+ * Orquestador del módulo Flota: cada tab carga su recurso
+ * (`/overview`, `/units`, `/equipment`). El drawer de detalle pide GET por id.
  * El catálogo de marcas/versiones se carga al abrir un side drawer que lo usa.
  */
 @Injectable()
@@ -19,7 +21,6 @@ export class FleetFeatureService {
   private readonly unitsFeature = inject(UnitsFeatureService);
   private readonly equipmentFeature = inject(EquipmentFeatureService);
 
-  private moduleLoadStarted = false;
   private disposed = false;
   private readonly _pendingDetailTab = signal<FleetDetailDrawerTab | null>(null);
 
@@ -27,25 +28,18 @@ export class FleetFeatureService {
     this.destroyRef.onDestroy(() => this.dispose());
   }
 
-  readonly listsLoading = computed(
-    () => this.unitsFeature.loading() || this.equipmentFeature.loading(),
-  );
-
-  readonly listsHydrated = computed(
-    () => this.unitsFeature.hydrated() && this.equipmentFeature.hydrated(),
-  );
-
-  readonly hasFleetAssets = computed(
-    () => this.unitsFeature.units().length > 0 || this.equipmentFeature.equipment().length > 0,
-  );
-
-  readonly loading = computed(
-    () =>
-      this.listsLoading() ||
-      (this.hasFleetAssets() && this.overviewFeature.loading()),
-  );
-
+  readonly unitsLoading = this.unitsFeature.loading;
+  readonly unitsHydrated = this.unitsFeature.hydrated;
+  readonly equipmentLoading = this.equipmentFeature.loading;
+  readonly equipmentHydrated = this.equipmentFeature.hydrated;
+  readonly overviewHydrated = this.overviewFeature.hydrated;
   readonly overviewLoading = this.overviewFeature.loading;
+
+  readonly hasOverviewAssets = computed(
+    () =>
+      this.overviewFeature.items().length > 0 ||
+      this.overviewFeature.equipmentRows().length > 0,
+  );
 
   readonly catalogLoading = this.catalogFeature.loading;
 
@@ -65,33 +59,34 @@ export class FleetFeatureService {
   readonly selectedEquipment = this.equipmentFeature.selectedEquipment;
   readonly pendingDetailTab = this._pendingDetailTab.asReadonly();
 
-  /** Unidades + equipo (una vez). Overview bajo demanda si hay flota. */
-  loadFleetModule(): void {
-    if (this.disposed || this.moduleLoadStarted) {
+  /** Carga solo el recurso de la tab activa. */
+  ensureTabLoaded(tab: FleetModuleTab): void {
+    if (this.disposed) {
       return;
     }
-    this.moduleLoadStarted = true;
-    this.unitsFeature.loadUnits();
+    if (tab === 'overview') {
+      this.overviewFeature.loadOverview();
+      return;
+    }
+    if (tab === 'units') {
+      this.unitsFeature.loadUnits();
+      return;
+    }
     this.equipmentFeature.loadEquipment();
   }
 
-  /** GET /fleet/overview solo cuando hay unidades o equipo. */
-  ensureOverviewLoaded(): void {
+  ensureUnitsLoaded(): void {
     if (this.disposed) {
       return;
     }
-    if (!this.hasFleetAssets()) {
-      this.overviewFeature.clearIdle();
-      return;
-    }
-    this.overviewFeature.loadOverview();
+    this.unitsFeature.loadUnits();
   }
 
-  clearOverviewIdle(): void {
+  ensureEquipmentLoaded(): void {
     if (this.disposed) {
       return;
     }
-    this.overviewFeature.clearIdle();
+    this.equipmentFeature.loadEquipment();
   }
 
   /** GET /fleet/catalog — solo al abrir drawer de alta/edición con marcas. */
@@ -121,12 +116,14 @@ export class FleetFeatureService {
     if (this.disposed) {
       return;
     }
-    this.unitsFeature.refreshUnits();
-    this.equipmentFeature.refreshEquipment();
+    if (this.unitsFeature.hasLoadedOnce()) {
+      this.unitsFeature.refreshUnits();
+    }
+    if (this.equipmentFeature.hasLoadedOnce()) {
+      this.equipmentFeature.refreshEquipment();
+    }
     if (this.overviewFeature.hasLoadedOnce()) {
       this.overviewFeature.refreshOverview();
-    } else if (this.hasFleetAssets()) {
-      this.overviewFeature.loadOverview();
     }
   }
 
@@ -161,7 +158,6 @@ export class FleetFeatureService {
       return;
     }
     this.disposed = true;
-    this.moduleLoadStarted = false;
     this.overviewFeature.dispose();
     this.catalogFeature.dispose();
     this.unitsFeature.dispose();

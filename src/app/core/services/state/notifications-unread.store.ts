@@ -3,6 +3,7 @@ import {
   Subject,
   Subscription,
   catchError,
+  debounceTime,
   exhaustMap,
   of,
 } from 'rxjs';
@@ -51,6 +52,8 @@ export function restoreNotifLastSeen(entries: Record<string, string>): void {
 /**
  * Badge de notificaciones nuevas por usuario+empresa.
  * Watermark en localStorage; poll ligero a /notifications/summary.
+ * No se refresca al enfocar un control (p. ej. abrir un drawer): eso
+ * disparaba el GET dos veces. Solo al volver a la pestaña o cada POLL_MS.
  */
 @Injectable({ providedIn: 'root' })
 export class NotificationsUnreadStore {
@@ -60,7 +63,7 @@ export class NotificationsUnreadStore {
   private readonly unreadCount = signal(0);
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private started = false;
-  private onFocus: (() => void) | null = null;
+  private onVisibility: (() => void) | null = null;
   private readonly refresh$ = new Subject<void>();
   private refreshSub: Subscription | null = null;
 
@@ -72,8 +75,10 @@ export class NotificationsUnreadStore {
     }
     this.started = true;
     this.ensureBaselineLastSeen();
+    this.refreshSub?.unsubscribe();
     this.refreshSub = this.refresh$
       .pipe(
+        debounceTime(50),
         exhaustMap(() => {
           const companyId = this.session.companyId();
           const userId = this.session.userId();
@@ -92,8 +97,12 @@ export class NotificationsUnreadStore {
       });
     this.refresh();
     this.pollTimer = setInterval(() => this.refresh(), POLL_MS);
-    this.onFocus = () => this.refresh();
-    window.addEventListener('focus', this.onFocus);
+    this.onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        this.refresh();
+      }
+    };
+    document.addEventListener('visibilitychange', this.onVisibility);
   }
 
   stop(): void {
@@ -102,9 +111,9 @@ export class NotificationsUnreadStore {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
     }
-    if (this.onFocus) {
-      window.removeEventListener('focus', this.onFocus);
-      this.onFocus = null;
+    if (this.onVisibility) {
+      document.removeEventListener('visibilitychange', this.onVisibility);
+      this.onVisibility = null;
     }
     this.refreshSub?.unsubscribe();
     this.refreshSub = null;

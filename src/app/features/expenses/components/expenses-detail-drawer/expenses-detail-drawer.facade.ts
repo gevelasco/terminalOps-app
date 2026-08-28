@@ -46,7 +46,6 @@ import { formatExpenseIncurredDateDisplay } from '@features/expenses/utils/expen
 import { isAdminRole } from '@shared/utils/access-control';
 import { APP_MODULE_CODES } from '@shared/models/app-modules.models';
 import { parseHttpApiErrorMessage } from '@shared/utils/http-api-error';
-import { isProjectedCalendarExpenseId } from '@features/expenses/utils/expenses-calendar-projection-expense.util';
 
 export type ExpenseDetailEditSection = 'classification' | 'relation' | 'payment';
 
@@ -69,23 +68,10 @@ export class ExpensesDetailDrawerFacade {
   readonly deleteConfirmOpen = signal(false);
   readonly deleteSubmitting = signal(false);
 
-  readonly canDeleteExpense = computed(
-    () => isAdminRole(this.session.role()) && !this.isProjectedExpense(),
+  readonly canDeleteExpense = computed(() => isAdminRole(this.session.role()));
+  readonly canWriteExpense = computed(() =>
+    this.session.canWriteModule(APP_MODULE_CODES.EXPENSES),
   );
-  readonly canWriteExpense = computed(
-    () =>
-      this.session.canWriteModule(APP_MODULE_CODES.EXPENSES) &&
-      !this.isProjectedExpense(),
-  );
-  readonly isProjectedExpense = computed(() =>
-    isProjectedCalendarExpenseId(this.expense()?.id),
-  );
-  readonly projectedStatusHint = computed(() => {
-    if (!this.isProjectedExpense()) {
-      return '';
-    }
-    return 'Gasto proyectado (aún no registrado en el ledger).';
-  });
 
   readonly rubroOptions = EXPENSE_RUBRO_OPTIONS;
   readonly verificationScopeOptions = EXPENSE_VERIFICATION_SCOPE_OPTIONS;

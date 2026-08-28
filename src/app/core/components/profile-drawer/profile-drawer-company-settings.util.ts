@@ -17,6 +17,7 @@ export function syncCompanySettingsFromProfile(
     tripAutoControlPaymentMethod: result.tripAutoControlPaymentMethod,
     dieselControlEnabled: result.dieselControlEnabled,
     dieselControlChangedAt: result.dieselControlChangedAt,
+    paymentReminderDaysBefore: result.paymentReminderDaysBefore,
     maintenanceKmControlEnabled: result.maintenanceKmControlEnabled,
     maintenanceKmIntervalDefault: result.maintenanceKmIntervalDefault,
     maintenanceKmControlChangedAt: result.maintenanceKmControlChangedAt,

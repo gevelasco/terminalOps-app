@@ -12,8 +12,8 @@ import type { OperationConfiguration } from '@shared/models/operation-configurat
 import { createRequestGeneration } from '@shared/utils/request-generation';
 
 /**
- * Catálogo operativo para la tab Tarifas.
- * GET /operation-configurations — lazy al abrir la tab Tarifas (una vez por visita al módulo).
+ * Catálogo operativo para el editor de precios (alta/edición de tarifa).
+ * GET /operation-configurations — lazy al montar el editor, no al entrar a Tarifas.
  */
 @Injectable()
 export class OperationConfigurationsFeatureService {

@@ -94,7 +94,10 @@ export class TripsService {
   private readonly http = inject(HttpClient);
   private readonly session = inject(SessionService);
 
-  /** Exportación explícita: recorre páginas de 100 sin abrir un endpoint ilimitado. */
+  /**
+   * Recorre páginas de 100 (p. ej. exportación explícita).
+   * No usar como precarga de sesión ni al entrar a un módulo.
+   */
   getAllTrips(params: Omit<TripsListParams, 'page' | 'limit'> = {}): Observable<Trip[]> {
     const loadPage = (page: number) =>
       this.getTripsPage({ ...params, page, limit: 100 });

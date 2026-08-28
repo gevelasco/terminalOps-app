@@ -47,11 +47,23 @@ export class EquipmentFeatureService {
     if (!id) {
       return null;
     }
-    return this._equipment().find((e) => e.id === id) ?? null;
+    const found = this._equipment().find((e) => e.id === id);
+    if (found) {
+      return found;
+    }
+    // El drawer puede abrir desde overview antes de hidratar GET /equipment.
+    if (!this._hydrated()) {
+      return placeholderEquipment(id);
+    }
+    return null;
   });
   readonly loading = this._loading.asReadonly();
   /** True tras el primer fetch (éxito o error). */
   readonly hydrated = this._hydrated.asReadonly();
+
+  hasLoadedOnce(): boolean {
+    return this.initialLoadStarted;
+  }
 
   loadEquipment(): void {
     if (this.disposed) {
@@ -289,4 +301,8 @@ export class EquipmentFeatureService {
     this._hydrated.set(false);
     this.initialLoadStarted = false;
   }
+}
+
+function placeholderEquipment(id: string): Equipment {
+  return { id, unitId: '', name: '', serialNumber: '', lastServiceDate: '' };
 }

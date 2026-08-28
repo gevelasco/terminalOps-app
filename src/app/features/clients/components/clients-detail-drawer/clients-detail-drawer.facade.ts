@@ -27,7 +27,6 @@ import {
 import { clientDeliveryRouteLinkTitle } from '@features/clients/utils/client-delivery-route-link';
 import { deriveClientCommercialHealthFromSummary } from '@features/clients/utils/client-commercial-status.util';
 import { formatClientBalanceMoney } from '@features/clients/utils/client-balance-summary';
-import { OperationConfigurationsFeatureService } from '@features/clients/services/operation-configurations.service';
 import type { ToIconName } from '@shared/ui/to-icon/to-icon-paths';
 import { clientCommercialPillClass, clientCommercialStatusMod } from '@shared/utils/client-commercial-pill';
 import {
@@ -58,7 +57,6 @@ export class ClientsDetailDrawerFacade {
   private readonly clientsApi = inject(ClientsApiService);
   private readonly balanceContext = inject(ClientsBalanceContextService);
   private readonly tripsApi = inject(TripsApiService);
-  private readonly operationConfigsFeature = inject(OperationConfigurationsFeatureService);
   private readonly toast = inject(ToastService);
   private readonly session = inject(SessionService);
 
@@ -67,7 +65,7 @@ export class ClientsDetailDrawerFacade {
   readonly balanceLoading = computed(() => this.balanceContext.clientBalanceLoading());
   readonly client = computed(() => this.clientsFeature.selectedClient()!);
 
-  readonly drawerLoading = signal(true);
+  readonly drawerLoading = computed(() => this.clientsFeature.detailLoading());
   readonly drawerTab = signal<ClientDrawerTab>('balance');
   readonly drawerSegmentTabs: readonly ToSegmentTab<ClientDrawerTab>[] = [
     {
@@ -203,7 +201,6 @@ export class ClientsDetailDrawerFacade {
       }
       const idChanged = this.priorClientId !== c.id;
       this.priorClientId = c.id;
-      this.drawerLoading.set(false);
       if (idChanged) {
         this.drawerTab.set('balance');
         this.editingSection.set(null);
@@ -219,24 +216,14 @@ export class ClientsDetailDrawerFacade {
     });
 
     effect(() => {
-      const c = this.clientsFeature.selectedClient();
+      const clientId = this.clientsFeature.selectedClientId();
       const tab = this.drawerTab();
       const from = this.periodFrom();
       const to = this.periodTo();
-      if (!c) {
+      if (!clientId || tab !== 'balance') {
         return;
       }
-      if (tab === 'balance') {
-        this.balanceContext.ensureClientBalanceLoaded(c.id, from, to);
-      }
-    });
-
-    effect(() => {
-      const c = this.clientsFeature.selectedClient();
-      if (!c) {
-        return;
-      }
-      this.operationConfigsFeature.loadOperationConfigurations();
+      this.balanceContext.ensureClientBalanceLoaded(clientId, from, to);
     });
   }
 
@@ -271,10 +258,7 @@ export class ClientsDetailDrawerFacade {
   }
 
   markReady(): void {
-    const c = this.clientsFeature.selectedClient();
-    if (c) {
-      this.drawerLoading.set(false);
-    }
+    // El skeleton lo controla `detailLoading` del GET por id.
   }
 
   requestDismiss(): void {
@@ -403,7 +387,11 @@ export class ClientsDetailDrawerFacade {
         }
         this.collectionConfirmRequest.set(null);
         this.balanceContext.invalidateBalances();
-        this.balanceContext.ensureClientBalanceLoaded(this.client().id);
+        this.balanceContext.ensureClientBalanceLoaded(
+          this.client().id,
+          this.periodFrom(),
+          this.periodTo(),
+        );
         this.balanceContext.ensureOverviewLoaded();
         this.toast.show(
           collected

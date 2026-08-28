@@ -33,12 +33,35 @@ export interface CompanyOperationalSettings extends CompanyOperationalCenter {
   tripAutoControlPaymentMethod: string;
   dieselControlEnabled: boolean;
   dieselControlChangedAt?: string;
+  paymentReminderDaysBefore: number;
   maintenanceKmControlEnabled: boolean;
   maintenanceKmIntervalDefault?: number;
   maintenanceKmControlChangedAt?: string;
   maintenanceDateControlEnabled: boolean;
   maintenanceDatePeriodDefault?: MaintenanceDatePeriod;
   maintenanceDateControlChangedAt?: string;
+}
+
+export const PAYMENT_REMINDER_DAYS_MIN = 1;
+export const PAYMENT_REMINDER_DAYS_MAX = 15;
+export const PAYMENT_REMINDER_DAYS_DEFAULT = 5;
+
+export function normalizePaymentReminderDays(raw: unknown): number {
+  if (raw == null || raw === '') {
+    return PAYMENT_REMINDER_DAYS_DEFAULT;
+  }
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) {
+    return PAYMENT_REMINDER_DAYS_DEFAULT;
+  }
+  const rounded = Math.round(n);
+  if (rounded < PAYMENT_REMINDER_DAYS_MIN) {
+    return PAYMENT_REMINDER_DAYS_MIN;
+  }
+  if (rounded > PAYMENT_REMINDER_DAYS_MAX) {
+    return PAYMENT_REMINDER_DAYS_MAX;
+  }
+  return rounded;
 }
 
 export const MAINTENANCE_DATE_PERIOD_OPTIONS: readonly {
