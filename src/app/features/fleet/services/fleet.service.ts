@@ -62,23 +62,27 @@ export class FleetFeatureService {
   readonly selectedEquipment = this.equipmentFeature.selectedEquipment;
   readonly pendingDetailTab = this._pendingDetailTab.asReadonly();
 
-  /** Carga solo el recurso de la tab activa. */
+  /**
+   * Carga solo el recurso de la tab activa.
+   * Overview = GET /fleet/overview. Unidades/equipo = su listado.
+   * Gastos de seguro: solo tablas Unidades/Equipo (icono de póliza desde el ledger).
+   * El drawer de cobertura pide gastos por activo; no hace falta el listado global al entrar.
+   */
   ensureTabLoaded(tab: FleetModuleTab): void {
     if (this.disposed) {
       return;
     }
-    this.coverageExpensesFeature.loadExpenses();
     if (tab === 'overview') {
       this.overviewFeature.loadOverview();
-      this.unitsFeature.loadUnits();
-      this.equipmentFeature.loadEquipment();
       return;
     }
     if (tab === 'units') {
       this.unitsFeature.loadUnits();
+      this.coverageExpensesFeature.loadExpenses();
       return;
     }
     this.equipmentFeature.loadEquipment();
+    this.coverageExpensesFeature.loadExpenses();
   }
 
   ensureUnitsLoaded(): void {

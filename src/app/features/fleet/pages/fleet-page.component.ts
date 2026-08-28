@@ -179,6 +179,9 @@ export class FleetPageComponent implements OnInit {
       if (this.fleet.unitsLoading() || !this.fleet.unitsHydrated()) {
         return;
       }
+      if (this.fleet.equipmentLoading() || !this.fleet.equipmentHydrated()) {
+        return;
+      }
       untracked(() => {
         this.pendingNewEquipment.set(false);
         this.tryOpenNewEquipmentDrawer();
@@ -621,7 +624,13 @@ export class FleetPageComponent implements OnInit {
 
   openNewEquipment(): void {
     this.fleet.ensureUnitsLoaded();
-    if (this.fleet.unitsLoading() || !this.fleet.unitsHydrated()) {
+    this.fleet.ensureEquipmentLoaded();
+    if (
+      this.fleet.unitsLoading() ||
+      !this.fleet.unitsHydrated() ||
+      this.fleet.equipmentLoading() ||
+      !this.fleet.equipmentHydrated()
+    ) {
       this.pendingNewEquipment.set(true);
       return;
     }

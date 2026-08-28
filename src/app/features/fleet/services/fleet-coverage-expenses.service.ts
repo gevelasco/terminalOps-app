@@ -6,8 +6,8 @@ import { fleetInsuranceExpensesListParams } from '@features/fleet/utils/fleet-co
 import { createRequestGeneration } from '@shared/utils/request-generation';
 
 /**
- * Ledger de seguro de la empresa para cards y tablas de Flota.
- * Misma fuente que el calendario del drawer (gastos `kind=insurance`).
+ * Ledger de seguro para iconos de póliza en tablas Unidades/Equipo.
+ * No se pide al entrar a Flota (overview); el drawer de cobertura carga por activo.
  */
 @Injectable()
 export class FleetCoverageExpensesFeatureService {
