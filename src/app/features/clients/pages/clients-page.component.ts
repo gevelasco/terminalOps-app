@@ -228,11 +228,14 @@ export class ClientsPageComponent implements OnInit {
     this.applyComercialTabFromRoute(
       this.route.snapshot.paramMap.get('comercialTab'),
     );
-    this.openClientFromQuery(this.route.snapshot.queryParamMap.get('clientId'));
+    this.openClientFromQuery(
+      this.route.snapshot.queryParamMap.get('clientId'),
+      this.route.snapshot.queryParamMap.get('clientTab'),
+    );
     this.route.queryParamMap
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((params) => {
-        this.openClientFromQuery(params.get('clientId'));
+        this.openClientFromQuery(params.get('clientId'), params.get('clientTab'));
       });
   }
 
@@ -265,23 +268,30 @@ export class ClientsPageComponent implements OnInit {
     }
   }
 
-  private openClientFromQuery(clientId: string | null): void {
+  private openClientFromQuery(clientId: string | null, clientTab: string | null): void {
     const id = clientId?.trim();
     if (!id) {
       return;
     }
+    const tab = clientTab?.trim();
     if (this.pageTab() !== 'clients') {
       void this.router.navigate(['/comercial/clients'], {
-        queryParams: { clientId: id },
+        queryParams: {
+          clientId: id,
+          ...(tab === 'details' || tab === 'balance' ? { clientTab: tab } : {}),
+        },
         replaceUrl: true,
       });
       return;
     }
     this.ensureClientsTabLoaded();
+    if (tab === 'details' || tab === 'balance') {
+      this.clientsFeature.requestDrawerTab(tab);
+    }
     this.pendingClientId.set(id);
     void this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { clientId: null },
+      queryParams: { clientId: null, clientTab: null },
       queryParamsHandling: 'merge',
       replaceUrl: true,
     });
@@ -315,6 +325,7 @@ export class ClientsPageComponent implements OnInit {
   }
 
   onClientDetailDismiss(): void {
+    this.clientsFeature.clearPendingDrawerTab();
     this.clientsFeature.clearSelection();
   }
 

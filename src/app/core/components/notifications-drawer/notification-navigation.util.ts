@@ -10,14 +10,24 @@ export function isNotificationNavigable(item: NotificationFeedItem): boolean {
 }
 
 function resolveFleetEntityTab(item: NotificationFeedItem): string | null {
-  if (item.entityTab?.trim() === 'cob') {
+  const tab = item.entityTab?.trim();
+  if (tab === 'cob' || tab === 'ficha' || tab === 'mant') {
+    return tab;
+  }
+  if (item.kind.endsWith('.coverage_updated')) {
     return 'cob';
+  }
+  if (item.kind.endsWith('.maintenance_updated')) {
+    return 'mant';
+  }
+  if (item.kind.endsWith('.ficha_updated')) {
+    return 'ficha';
   }
   if (item.entityType !== 'unit' && item.entityType !== 'equipment') {
     return null;
   }
   const title = item.title.trim().toLowerCase();
-  if (title.includes('pago de gps') || title.includes('pago de seguro')) {
+  if (title === 'cobertura' || title.includes('pago de gps') || title.includes('pago de seguro')) {
     return 'cob';
   }
   if (
@@ -25,6 +35,35 @@ function resolveFleetEntityTab(item: NotificationFeedItem): string | null {
     title.includes('cuota de financiamiento')
   ) {
     return 'cob';
+  }
+  if (title === 'mantenimiento') {
+    return 'mant';
+  }
+  if (title === 'ficha técnica') {
+    return 'ficha';
+  }
+  return null;
+}
+
+function resolveClientEntityTab(item: NotificationFeedItem): string | null {
+  const tab = item.entityTab?.trim();
+  if (tab === 'details' || tab === 'balance') {
+    return tab;
+  }
+  if (item.kind === 'client.updated') {
+    return 'details';
+  }
+  const title = item.title.trim().toLowerCase();
+  if (
+    title === 'cliente modificado' ||
+    title === 'detalles' ||
+    title.includes('identificación') ||
+    title.includes('fiscal') ||
+    title.includes('entrega') ||
+    title.includes('contacto') ||
+    title.includes('cobro')
+  ) {
+    return 'details';
   }
   return null;
 }
@@ -41,8 +80,9 @@ function fleetQueryParams(
   if (equipmentId) {
     params['equipmentId'] = equipmentId;
   }
-  if (resolveFleetEntityTab(item) === 'cob') {
-    params['fleetTab'] = 'cob';
+  const tab = resolveFleetEntityTab(item);
+  if (tab) {
+    params['fleetTab'] = tab;
   }
   return params;
 }
@@ -58,10 +98,19 @@ export function resolveNotificationNavigation(
   const entityId = item.entityId?.trim() ?? '';
 
   switch (entityType) {
-    case 'client':
-      return entityId
-        ? { commands: ['/comercial/clients'], queryParams: { clientId: entityId } }
+    case 'client': {
+      const queryParams: Record<string, string> = {};
+      if (entityId) {
+        queryParams['clientId'] = entityId;
+      }
+      const tab = resolveClientEntityTab(item);
+      if (tab) {
+        queryParams['clientTab'] = tab;
+      }
+      return Object.keys(queryParams).length > 0
+        ? { commands: ['/comercial/clients'], queryParams }
         : { commands: ['/comercial/clients'] };
+    }
     case 'trip':
       return entityId
         ? { commands: ['/trips'], queryParams: { tripId: entityId } }

@@ -16,6 +16,7 @@ import {
 import type { NotificationFeedItem } from '@core/services/api/notifications';
 import { ToSideDrawerComponent } from '@shared/ui/to-side-drawer/to-side-drawer.component';
 import { ToIconComponent } from '@shared/ui/to-icon/to-icon.component';
+import { ToInputComponent } from '@shared/ui/to-input/to-input.component';
 import type { ToIconName } from '@shared/ui/to-icon/to-icon-paths';
 import { DateShortPipe } from '@shared/pipes/date-short.pipe';
 
@@ -24,7 +25,7 @@ import { DateShortPipe } from '@shared/pipes/date-short.pipe';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [NotificationsDrawerFacade, DateShortPipe],
-  imports: [ToSideDrawerComponent, ToIconComponent],
+  imports: [ToSideDrawerComponent, ToIconComponent, ToInputComponent],
   templateUrl: './notifications-drawer.component.html',
   styleUrls: [
     '../../../features/fleet/components/fleet-drawer.shared.scss',

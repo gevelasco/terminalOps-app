@@ -202,7 +202,13 @@ export class ClientsDetailDrawerFacade {
       const idChanged = this.priorClientId !== c.id;
       this.priorClientId = c.id;
       if (idChanged) {
-        this.drawerTab.set('balance');
+        const pending = this.clientsFeature.pendingDrawerTab();
+        this.drawerTab.set(
+          pending === 'details' || pending === 'balance' ? pending : 'balance',
+        );
+        if (pending === 'details' || pending === 'balance') {
+          this.clientsFeature.clearPendingDrawerTab();
+        }
         this.editingSection.set(null);
         this.cancelContactForm();
         this.periodFromMonth.set(this.now.getMonth() + 1);
@@ -213,6 +219,16 @@ export class ClientsDetailDrawerFacade {
       if (idChanged || this.editingSection() === null) {
         this.patchFormFromClient(c);
       }
+    });
+
+    effect(() => {
+      const client = this.clientsFeature.selectedClient();
+      const tab = this.clientsFeature.pendingDrawerTab();
+      if (!client || (tab !== 'details' && tab !== 'balance')) {
+        return;
+      }
+      this.clientsFeature.clearPendingDrawerTab();
+      this.drawerTab.set(tab);
     });
 
     effect(() => {

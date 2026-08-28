@@ -368,6 +368,11 @@
       En equipo solo aplica verificación físico-mecánica (no hay verificación de
       emisiones como en tractores).
     </p>
+    @if (physMechExemptionActive()) {
+      <p class="fleet-unit-sec__docs-hint" role="status">
+        {{ physMechExemptionMessage() }}
+      </p>
+    }
     <div class="fleet-unit-toggle-row">
       <span class="fleet-unit-toggle-row__label" id="fleet-eq-phys-mech-label">
         Aplica verificación físico-mecánica
@@ -376,8 +381,10 @@
         type="button"
         class="fleet-unit-toggle"
         [class.fleet-unit-toggle--on]="physMechApplies()"
+        [class.fleet-unit-toggle--disabled]="physMechExemptionActive()"
         role="switch"
         [attr.aria-checked]="physMechApplies()"
+        [attr.aria-disabled]="physMechExemptionActive()"
         aria-labelledby="fleet-eq-phys-mech-label"
         (click)="togglePhysMechSwitch()"
       >
@@ -389,6 +396,7 @@
         <to-input
           label="Verificación físico-mecánica"
           type="date"
+          [disabled]="physMechExemptionActive()"
           [(value)]="verificationPhysMechDate"
         />
         <to-input
@@ -396,6 +404,7 @@
           type="text"
           [groupThousands]="true"
           placeholder="Ej. $ 850"
+          [disabled]="physMechExemptionActive()"
           [(value)]="verificationPhysMechCost"
         />
       </div>

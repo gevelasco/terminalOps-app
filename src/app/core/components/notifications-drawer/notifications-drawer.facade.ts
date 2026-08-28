@@ -1,4 +1,4 @@
-import { DestroyRef, Injectable, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   NotificationsService,
@@ -7,6 +7,8 @@ import {
   type NotificationsFeedResponse,
 } from '@core/services/api/notifications';
 import type { ToIconName } from '@shared/ui/to-icon/to-icon-paths';
+import { enrichNotificationFeedItem } from './notification-display.util';
+import { filterNotificationFeedItems } from './notifications-drawer-search.util';
 
 export type NotificationsLoadOptions = {
   onLoaded?: (response: NotificationsFeedResponse) => void;
@@ -23,6 +25,11 @@ export class NotificationsDrawerFacade {
   readonly error = signal<string | null>(null);
   readonly items = signal<NotificationFeedItem[]>([]);
   readonly total = signal(0);
+  readonly searchQuery = signal('');
+  readonly visibleItems = computed(() =>
+    filterNotificationFeedItems(this.items(), this.searchQuery()),
+  );
+  readonly hasSearchQuery = computed(() => this.searchQuery().trim().length > 0);
 
   readonly periodTabs: {
     value: NotificationPeriod;
@@ -38,11 +45,11 @@ export class NotificationsDrawerFacade {
     this.loading.set(true);
     this.error.set(null);
     this.notificationsApi
-      .getFeed({ period: this.period(), limit: 50 })
+      .getFeed({ period: this.period(), limit: 100 })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (response) => {
-          this.items.set(response.items);
+          this.items.set(response.items.map(enrichNotificationFeedItem));
           this.total.set(response.total);
           this.loading.set(false);
           options?.onLoaded?.(response);
@@ -70,5 +77,6 @@ export class NotificationsDrawerFacade {
     this.error.set(null);
     this.items.set([]);
     this.total.set(0);
+    this.searchQuery.set('');
   }
 }

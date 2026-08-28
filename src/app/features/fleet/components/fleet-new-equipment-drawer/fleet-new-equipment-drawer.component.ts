@@ -17,6 +17,7 @@ import { FormsModule } from '@angular/forms';
 import { catchError, forkJoin, of, switchMap, throwError } from 'rxjs';
 import { ToastService } from '@core/notifications/toast.service';
 import { EquipmentService as EquipmentApiService } from '@core/services/api/equipment';
+import { ExpensesService } from '@core/services/api/expenses';
 import { PlanEntitlementService } from '@shared/billing/plan-entitlement.service';
 import { EQUIPMENT_OPERATION_TYPE_OPTIONS } from '@shared/catalogs/fleet-form-options';
 import {
@@ -33,6 +34,11 @@ import {
   parseFleetModelYear,
   registerFleetHitchSlotSync,
 } from '@app/features/fleet/utils/fleet-drawer-form.utils';
+import {
+  fleetModelTwoYearExemptionEndYmd,
+  isWithinFleetModelTwoYearExemption,
+} from '@features/fleet/utils/fleet-verification-exemption.util';
+import { formatFleetYmdMx } from '@features/fleet/utils/fleet-unit-table-row';
 import { fleetUnitIdIsOnRoute } from '@features/fleet/utils/fleet-operational-status';
 import { cyclicRenewalHint } from '@features/fleet/utils/fleet-cyclic-renewal-hint';
 import { validateEquipmentHitchAssignment, hitchPositionForNewEquipmentOnUnit, unitsEligibleForEquipmentHitch } from '@shared/utils/fleet/equipment-hitch-assignment';
@@ -64,6 +70,11 @@ import {
   FLEET_TIRE_CONDITION_OPTIONS,
 } from '@shared/catalogs/fleet-form-options';
 import { EXPENSE_PAYMENT_METHOD_OPTIONS } from '@shared/catalogs/expense-form-options';
+import {
+  buildFleetMaintenanceExpensePayload,
+  FLEET_MAINTENANCE_LEDGER_ERROR,
+  type FleetMaintenanceExpenseInput,
+} from '@features/fleet/utils/fleet-maintenance-expense.util';
 
 function parseYmd(s: string): Date | null {
   const t = s.trim();
@@ -171,6 +182,7 @@ export class FleetNewEquipmentDrawerComponent {
   private readonly fleetFeature = inject(FleetFeatureService);
   private readonly equipmentFeature = inject(EquipmentFeatureService);
   private readonly equipmentApi = inject(EquipmentApiService);
+  private readonly expensesApi = inject(ExpensesService);
   private readonly planEntitlements = inject(PlanEntitlementService);
   private readonly toast = inject(ToastService);
 
@@ -242,6 +254,17 @@ export class FleetNewEquipmentDrawerComponent {
       { allowSignalWrites: true },
     );
     this.destroyRef.onDestroy(() => containerSlotCoercion.destroy());
+    effect(
+      () => {
+        if (!this.physMechExemptionActive()) {
+          return;
+        }
+        this.physMechApplies.set(true);
+        this.verificationPhysMechDate.set('');
+        this.verificationPhysMechCost.set('');
+      },
+      { allowSignalWrites: true },
+    );
   }
 
   readonly brandName = model('');
@@ -335,6 +358,21 @@ export class FleetNewEquipmentDrawerComponent {
       this.doubleArticApplies() &&
       hasValidDateAndCost(this.verificationDoubleDate(), this.verificationDoubleCost());
     return physOk || doubleOk;
+  });
+
+  readonly physMechExemptionActive = computed(() => {
+    const parsed = parseFleetModelYear(this.modelYear());
+    return parsed.ok && isWithinFleetModelTwoYearExemption(parsed.year);
+  });
+
+  readonly physMechExemptionMessage = computed(() => {
+    const parsed = parseFleetModelYear(this.modelYear());
+    if (!parsed.ok) {
+      return '';
+    }
+    const end = fleetModelTwoYearExemptionEndYmd(parsed.year);
+    const endFmt = end ? formatFleetYmdMx(end) : '—';
+    return `Modelo ${parsed.year}: exento de físico-mecánica hasta el ${endFmt}. Se programará el primer gasto en el ledger para esa fecha.`;
   });
 
   private readonly clearHiddenDocUploads = (() => {
@@ -454,6 +492,9 @@ export class FleetNewEquipmentDrawerComponent {
   }
 
   togglePhysMechSwitch(): void {
+    if (this.physMechExemptionActive()) {
+      return;
+    }
     const next = !this.physMechApplies();
     this.physMechApplies.set(next);
     if (!next) {
@@ -515,7 +556,7 @@ export class FleetNewEquipmentDrawerComponent {
       }
     }
 
-    if (this.physMechApplies() && !this.verificationPhysMechDate().trim()) {
+    if (this.physMechApplies() && !this.physMechExemptionActive() && !this.verificationPhysMechDate().trim()) {
       this.toast.show(
         'Si aplica verificación físico-mecánica, indica la fecha.',
         'warning',
@@ -532,9 +573,10 @@ export class FleetNewEquipmentDrawerComponent {
 
     const maintCost = parseOptionalAmount(this.lastMaintenanceCost());
     const insCost = parseOptionalAmount(this.insuranceCost());
-    const physCost = this.physMechApplies()
-      ? parseOptionalAmount(this.verificationPhysMechCost())
-      : undefined;
+    const physCost =
+      this.physMechApplies() && !this.physMechExemptionActive()
+        ? parseOptionalAmount(this.verificationPhysMechCost())
+        : undefined;
     const doubleCost = this.doubleArticApplies()
       ? parseOptionalAmount(this.verificationDoubleCost())
       : undefined;
@@ -645,11 +687,16 @@ export class FleetNewEquipmentDrawerComponent {
       insurancePaymentMethod: this.insurancePaymentMethod().trim() || undefined,
       insuranceContractDate: this.insuranceContractDate().trim() || undefined,
       insuranceCost: insCost === undefined ? undefined : insCost,
-      verificationPhysMechDate: this.physMechApplies()
-        ? this.verificationPhysMechDate().trim() || undefined
-        : undefined,
+      verificationPhysMechDate:
+        this.physMechApplies() && !this.physMechExemptionActive()
+          ? this.verificationPhysMechDate().trim() || undefined
+          : undefined,
       verificationPhysMechCost:
-        this.physMechApplies() && physCost !== undefined ? physCost : undefined,
+        this.physMechApplies() &&
+        !this.physMechExemptionActive() &&
+        physCost !== undefined
+          ? physCost
+          : undefined,
       verificationDoubleArticulatedApplies: this.doubleArticApplies(),
       verificationDoubleArticulatedDate: this.doubleArticApplies()
         ? this.verificationDoubleDate().trim() || undefined
@@ -682,6 +729,13 @@ export class FleetNewEquipmentDrawerComponent {
     if (!beginInFlight(this.saving)) {
       return;
     }
+    const maintLedgerInput: Omit<FleetMaintenanceExpenseInput, 'unitId' | 'equipmentId'> = {
+      date: this.lastMaintenanceDate().trim(),
+      cost: typeof maintCost === 'number' ? maintCost : 0,
+      typeValue: this.lastMaintenanceType(),
+      typeLabel: maintTypeLabel,
+      notes: this.lastMaintenanceNotes().trim() || undefined,
+    };
     this.equipmentFeature
       .createEquipment({
         unitId: uid || undefined,
@@ -718,7 +772,8 @@ export class FleetNewEquipmentDrawerComponent {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        next: () => {
+        next: (created) => {
+          this.postCreatedMaintenanceExpense(created.id, maintLedgerInput);
           this.fleetFeature.registerLocalCatalogEntry(
             'EQUIPMENT',
             brandName,
@@ -740,6 +795,16 @@ export class FleetNewEquipmentDrawerComponent {
             'phase' in err &&
             (err as { phase?: string }).phase === 'documents';
           if (docsFailed) {
+            const equipmentId =
+              typeof err === 'object' &&
+              err !== null &&
+              'equipmentId' in err &&
+              typeof (err as { equipmentId?: unknown }).equipmentId === 'string'
+                ? (err as { equipmentId: string }).equipmentId
+                : '';
+            if (equipmentId) {
+              this.postCreatedMaintenanceExpense(equipmentId, maintLedgerInput);
+            }
             this.toast.show(
               'El equipo se creó, pero no se pudieron subir los documentos. Ábrelo y súbelos de nuevo.',
               'error',
@@ -751,6 +816,25 @@ export class FleetNewEquipmentDrawerComponent {
           this.toast.show('No se pudo guardar el equipo.', 'error');
           this.saving.set(false);
         },
+      });
+  }
+
+  private postCreatedMaintenanceExpense(
+    equipmentId: string,
+    input: Omit<FleetMaintenanceExpenseInput, 'unitId' | 'equipmentId'>,
+  ): void {
+    const payload = buildFleetMaintenanceExpensePayload({
+      ...input,
+      equipmentId,
+    });
+    if (!payload) {
+      return;
+    }
+    this.expensesApi
+      .postExpense(payload)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () => this.toast.show(FLEET_MAINTENANCE_LEDGER_ERROR, 'warning'),
       });
   }
 }

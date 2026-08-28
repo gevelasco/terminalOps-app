@@ -11,7 +11,11 @@ import type {
   FleetOverviewOperationalStatus,
   FleetOverviewRenewalStatus,
 } from '@shared/models/api/fleet-overview.model';
-import type { Equipment, Unit } from '@shared/models/logistics.models';
+import type { Equipment, Expense, Unit } from '@shared/models/logistics.models';
+import {
+  insuranceExpensesForEquipment,
+  insuranceExpensesForUnit,
+} from '@features/fleet/utils/fleet-coverage-expenses.util';
 import {
   overviewOperationalKey,
   operationalKeyIsEnCurso,
@@ -63,7 +67,7 @@ export type FleetOverviewCardEntry = {
   usesCajaSeca: boolean;
   trailerVisual: ConvoyTrailerVisual;
   daysWithoutManeuver?: number;
-  /** Seguro y verificaciones desde fleetMeta local (misma lógica que drawer y tablas). */
+  /** Seguro y verificaciones desde fleetMeta + ledger (misma lógica que drawer y tablas). */
   compliance?: FleetComplianceSummary;
 };
 
@@ -133,13 +137,22 @@ export function attachOverviewCompliance(
   entry: FleetOverviewCardEntry,
   units: readonly Unit[],
   equipment: readonly Equipment[],
+  expenses: readonly Expense[] = [],
+  today?: Date,
 ): FleetOverviewCardEntry {
   if (entry.kind === 'standalone-equipment') {
     const equipmentId = entry.hitched[0]?.equipmentId;
     if (equipmentId != null) {
       const e = equipment.find((row) => row.id === String(equipmentId));
       if (e) {
-        return { ...entry, compliance: fleetComplianceFromEquipment(e) };
+        return {
+          ...entry,
+          compliance: fleetComplianceFromEquipment(
+            e,
+            insuranceExpensesForEquipment(expenses, e.id),
+            today,
+          ),
+        };
       }
     }
     return withOverviewComplianceFallback(entry);
@@ -147,7 +160,15 @@ export function attachOverviewCompliance(
 
   const unit = units.find((row) => row.id === entry.unitId);
   if (unit) {
-    return { ...entry, compliance: fleetComplianceFromUnitMeta(unit.fleetMeta) };
+    return {
+      ...entry,
+      compliance: fleetComplianceFromUnitMeta(
+        unit.fleetMeta,
+        unit.trailerYear,
+        insuranceExpensesForUnit(expenses, unit.id),
+        today,
+      ),
+    };
   }
   return withOverviewComplianceFallback(entry);
 }

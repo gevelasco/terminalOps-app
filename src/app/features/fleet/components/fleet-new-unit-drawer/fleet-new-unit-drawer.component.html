@@ -328,6 +328,11 @@
     aria-labelledby="fleet-sec-ver"
   >
     <h3 id="fleet-sec-ver" class="fleet-unit-sec__title">Verificaciones</h3>
+    @if (physEmisExemptionActive()) {
+      <p class="fleet-unit-sec__docs-hint" role="status">
+        {{ physEmisExemptionMessage() }}
+      </p>
+    }
 
     <div class="fleet-unit-toggle-row">
       <span class="fleet-unit-toggle-row__label" id="fleet-phys-mech-label">
@@ -337,8 +342,10 @@
         type="button"
         class="fleet-unit-toggle"
         [class.fleet-unit-toggle--on]="physMechApplies()"
+        [class.fleet-unit-toggle--disabled]="physEmisExemptionActive()"
         role="switch"
         [attr.aria-checked]="physMechApplies()"
+        [attr.aria-disabled]="physEmisExemptionActive()"
         aria-labelledby="fleet-phys-mech-label"
         (click)="togglePhysMechSwitch()"
       >
@@ -350,6 +357,7 @@
         <to-input
           label="Verificación físico-mecánica"
           type="date"
+          [disabled]="physEmisExemptionActive()"
           [(value)]="verificationPhysMechDate"
         />
         <to-input
@@ -357,6 +365,7 @@
           type="text"
           [groupThousands]="true"
           placeholder="Ej. $ 850"
+          [disabled]="physEmisExemptionActive()"
           [(value)]="verificationPhysMechCost"
         />
       </div>
@@ -380,8 +389,10 @@
         type="button"
         class="fleet-unit-toggle"
         [class.fleet-unit-toggle--on]="emissionsApplies()"
+        [class.fleet-unit-toggle--disabled]="physEmisExemptionActive()"
         role="switch"
         [attr.aria-checked]="emissionsApplies()"
+        [attr.aria-disabled]="physEmisExemptionActive()"
         aria-labelledby="fleet-emissions-label"
         (click)="toggleEmissionsSwitch()"
       >
@@ -393,6 +404,7 @@
         <to-input
           label="Verificación de emisiones"
           type="date"
+          [disabled]="physEmisExemptionActive()"
           [(value)]="verificationEmissionsDate"
         />
         <to-input
@@ -400,6 +412,7 @@
           type="text"
           [groupThousands]="true"
           placeholder="Ej. $ 850"
+          [disabled]="physEmisExemptionActive()"
           [(value)]="verificationEmissionsCost"
         />
       </div>

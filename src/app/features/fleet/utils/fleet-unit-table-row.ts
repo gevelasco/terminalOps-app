@@ -1,10 +1,10 @@
-import type { Expense } from '@shared/models/logistics.models';
 import { EQUIPMENT_OPERATION_TYPE_OPTIONS } from '@shared/catalogs/fleet-form-options';
 import { fleetBrandDisplayName } from '@shared/utils/fleet/fleet-brand-display';
 import type { CompanyMaintenancePolicy } from '@shared/models/company-operational-settings.models';
 import {
   Equipment,
   EquipmentFleetMeta,
+  Expense,
   Unit,
   UnitFleetMeta,
 } from '@shared/models/logistics.models';
@@ -22,8 +22,16 @@ import {
   nextInsurancePaymentDate as nextInsurancePaymentDateFromUtil,
 } from '@features/fleet/utils/fleet-insurance-payment.util';
 import { nextGpsPaymentDate as nextGpsPaymentDateFromUtil } from '@features/fleet/utils/fleet-gps-payment.util';
-import { insurancePaymentCompliance } from '@features/fleet/utils/fleet-insurance-schedule.util';
+import {
+  buildInsurancePaymentSchedule,
+  insurancePaymentCompliance,
+} from '@features/fleet/utils/fleet-insurance-schedule.util';
 import { gpsPaymentCompliance } from '@features/fleet/utils/fleet-gps-schedule.util';
+import { nextUnpaidCoverageDueYmd } from '@features/fleet/utils/fleet-ledger-coverage-schedule.util';
+import {
+  fleetModelTwoYearExemptionEnd,
+  isWithinFleetModelTwoYearExemption,
+} from '@features/fleet/utils/fleet-verification-exemption.util';
 
 export type FleetRenewalBucket = 'ok' | 'soon' | 'due' | 'na';
 
@@ -119,20 +127,14 @@ function parseYmd(s: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function addYears(base: Date, years: number): Date {
-  const d = new Date(base.getTime());
-  d.setFullYear(d.getFullYear() + years);
-  return d;
-}
-
 function addMonths(base: Date, months: number): Date {
   const d = new Date(base.getTime());
   d.setMonth(d.getMonth() + months);
   return d;
 }
 
-function daysFromToday(target: Date): number {
-  const today = new Date();
+function daysFromToday(target: Date, now = new Date()): number {
+  const today = new Date(now.getTime());
   today.setHours(0, 0, 0, 0);
   const t = new Date(target.getTime());
   t.setHours(0, 0, 0, 0);
@@ -346,9 +348,17 @@ function maintenanceBucket(
   return renewalBucket(meta?.lastMaintenanceDate, months);
 }
 
-function verificationBucket(meta: UnitFleetMeta | undefined): FleetRenewalBucket {
-  const phys = complianceRenewalBucket(meta?.verificationPhysMechDate, VERIF_CYCLE_MO);
-  const emis = complianceRenewalBucket(meta?.verificationEmissionsDate, VERIF_CYCLE_MO);
+function verificationBucket(
+  meta: UnitFleetMeta | undefined,
+  trailerYear?: string | null,
+): FleetRenewalBucket {
+  const exempt = isWithinFleetModelTwoYearExemption(trailerYear);
+  const phys = exempt
+    ? 'ok'
+    : complianceRenewalBucket(meta?.verificationPhysMechDate, VERIF_CYCLE_MO);
+  const emis = exempt
+    ? 'ok'
+    : complianceRenewalBucket(meta?.verificationEmissionsDate, VERIF_CYCLE_MO);
   const doubleApplies = meta?.verificationDoubleArticulatedApplies === true;
   if (doubleApplies) {
     const double = complianceRenewalBucket(
@@ -366,6 +376,7 @@ function verificationBucket(meta: UnitFleetMeta | undefined): FleetRenewalBucket
 function insuranceBucket(
   meta: FleetInsuranceRenewalMeta | undefined,
   expenses?: readonly Expense[],
+  today?: Date,
 ): FleetRenewalBucket {
   const policy = meta?.insurancePolicyNumber?.trim();
   const anchor = insurancePaymentAnchor(meta);
@@ -374,7 +385,7 @@ function insuranceBucket(
   }
 
   if (expenses) {
-    const scheduleCompliance = insurancePaymentCompliance(meta, { expenses });
+    const scheduleCompliance = insurancePaymentCompliance(meta, { expenses, today });
     if (scheduleCompliance) {
       return scheduleCompliance.bucket;
     }
@@ -387,7 +398,7 @@ function insuranceBucket(
   if (!next) {
     return 'ok';
   }
-  const d = daysFromToday(next);
+  const d = daysFromToday(next, today);
   if (d < 0) {
     return 'due';
   }
@@ -399,32 +410,37 @@ function insuranceBucket(
 
 export function fleetComplianceFromUnitMeta(
   meta: UnitFleetMeta | undefined,
+  trailerYear?: string | null,
+  expenses?: readonly Expense[],
+  today?: Date,
 ): FleetComplianceSummary {
-  const verifBucket = fleetVerificationRenewal(meta);
-  const insBucket = fleetInsuranceRenewal(meta);
+  const verifBucket = fleetVerificationRenewal(meta, trailerYear);
+  const insBucket = fleetInsuranceRenewal(meta, expenses, today);
   return {
     verifBucket,
     insBucket,
     verifLabel: fleetRenewalBucketLabel(verifBucket),
     insLabel: fleetRenewalBucketLabel(insBucket),
     verifNext: nextVerificationTableDate(meta) ?? '—',
-    insNext: nextInsuranceTableDate(meta) ?? '—',
+    insNext: nextInsuranceTableDate(meta, expenses) ?? '—',
   };
 }
 
 export function fleetComplianceFromEquipment(
   equipment: Equipment,
+  expenses?: readonly Expense[],
+  today?: Date,
 ): FleetComplianceSummary {
   const meta = equipment.fleetMeta;
   const verifBucket = equipmentPhysMechVerificationBucket(equipment, meta);
-  const insBucket = fleetInsuranceRenewal(meta);
+  const insBucket = fleetInsuranceRenewal(meta, expenses, today);
   return {
     verifBucket,
     insBucket,
     verifLabel: fleetRenewalBucketLabel(verifBucket),
     insLabel: fleetRenewalBucketLabel(insBucket),
     verifNext: nextEquipmentPhysMechTableDate(equipment, meta) ?? '—',
-    insNext: nextInsuranceTableDate(meta) ?? '—',
+    insNext: nextInsuranceTableDate(meta, expenses) ?? '—',
   };
 }
 
@@ -435,15 +451,19 @@ export function fleetMaintenanceRenewal(
   return maintenanceBucket(meta, policy);
 }
 
-export function fleetVerificationRenewal(meta: UnitFleetMeta | undefined): FleetRenewalBucket {
-  return verificationBucket(meta);
+export function fleetVerificationRenewal(
+  meta: UnitFleetMeta | undefined,
+  trailerYear?: string | null,
+): FleetRenewalBucket {
+  return verificationBucket(meta, trailerYear);
 }
 
 export function fleetInsuranceRenewal(
   meta: FleetInsuranceRenewalMeta | undefined,
   expenses?: readonly Expense[],
+  today?: Date,
 ): FleetRenewalBucket {
-  return insuranceBucket(meta, expenses);
+  return insuranceBucket(meta, expenses, today);
 }
 
 function nextGpsPaymentDate(meta: UnitFleetMeta | undefined): Date | null {
@@ -578,7 +598,19 @@ export function nextVerificationTableDate(meta: UnitFleetMeta | undefined): stri
 }
 
 /** Próximo pago de seguro (solo fecha) para celda de tabla. */
-export function nextInsuranceTableDate(meta: FleetInsuranceRenewalMeta | undefined): string | null {
+export function nextInsuranceTableDate(
+  meta: FleetInsuranceRenewalMeta | undefined,
+  expenses?: readonly Expense[],
+): string | null {
+  if (expenses) {
+    const due = nextUnpaidCoverageDueYmd(
+      buildInsurancePaymentSchedule({ meta, expenses }),
+    );
+    if (due) {
+      const d = parseYmd(due);
+      return d ? fmtMx(d) : due;
+    }
+  }
   const next = nextInsurancePaymentDate(meta);
   return next ? fmtMx(next) : null;
 }
@@ -598,12 +630,6 @@ export function nextInsurancePaymentFormatted(meta: UnitFleetMeta | undefined): 
   return next ? `Próximo pago: ${fmtMx(next)}` : null;
 }
 
-function startOfDay(d: Date): Date {
-  const x = new Date(d.getTime());
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
 /**
  * Fin de la exención de 2 años para físico-mecánica del equipo.
  * Solo depende del año modelo (`trailerYear`): desde el 1 ene de ese año + 2 años.
@@ -614,23 +640,15 @@ export function equipmentPhysMechTwoYearExemptionEnd(
   _meta?: EquipmentFleetMeta | undefined,
   _refNow = new Date(),
 ): Date | null {
-  const modelYear = Number.parseInt((equipment.trailerYear ?? '').trim(), 10);
-  if (!Number.isFinite(modelYear) || modelYear < 1990 || modelYear > 2100) {
-    return null;
-  }
-  return addYears(new Date(modelYear, 0, 1), 2);
+  return fleetModelTwoYearExemptionEnd(equipment.trailerYear);
 }
 
 function equipmentWithinPhysMechTwoYearExemption(
   equipment: Pick<Equipment, 'trailerYear'>,
-  meta: EquipmentFleetMeta | undefined,
+  _meta: EquipmentFleetMeta | undefined,
   refNow = new Date(),
 ): boolean {
-  const end = equipmentPhysMechTwoYearExemptionEnd(equipment, meta, refNow);
-  if (!end) {
-    return false;
-  }
-  return startOfDay(refNow).getTime() < startOfDay(end).getTime();
+  return isWithinFleetModelTwoYearExemption(equipment.trailerYear, refNow);
 }
 
 /** Solo físico-mecánica; respeta exención de 2 años por año modelo. */
@@ -679,10 +697,13 @@ export function buildFleetUnitTableRow(
     onRoute: boolean;
     operationalOverride?: FleetOperationalKey;
     hitchedEquipment?: Equipment[];
+    insuranceExpenses?: readonly Expense[];
+    today?: Date;
   },
 ): Record<string, unknown> {
   const meta = u.fleetMeta;
   const hitched = options.hitchedEquipment ?? [];
+  const insuranceExpenses = options.insuranceExpenses;
   return {
     id: u.id,
     fleetBrand: trailerBrandLabel(u),
@@ -692,11 +713,11 @@ export function buildFleetUnitTableRow(
     fleetOperational:
       options.operationalOverride ?? operationalKey(u, options.onRoute),
     fleetMaint: maintenanceBucket(meta),
-    fleetVerif: verificationBucket(meta),
-    fleetIns: insuranceBucket(meta),
+    fleetVerif: verificationBucket(meta, u.trailerYear),
+    fleetIns: insuranceBucket(meta, insuranceExpenses, options.today),
     fleetMaintNext: nextMaintenanceTableDate(meta),
     fleetVerifNext: nextVerificationTableDate(meta),
-    fleetInsNext: nextInsuranceTableDate(meta),
+    fleetInsNext: nextInsuranceTableDate(meta, insuranceExpenses),
   };
 }
 
@@ -756,6 +777,8 @@ export function buildFleetEquipmentTableRow(
   options: {
     onRoute: boolean;
     operationalOverride?: FleetOperationalKey;
+    insuranceExpenses?: readonly Expense[];
+    today?: Date;
   },
 ): Record<string, unknown> {
   const meta = e.fleetMeta;
@@ -772,6 +795,7 @@ export function buildFleetEquipmentTableRow(
         insurancePaymentCadence: meta.insurancePaymentCadence,
       }
     : undefined;
+  const insuranceExpenses = options.insuranceExpenses;
 
   return {
     id: e.id,
@@ -784,9 +808,9 @@ export function buildFleetEquipmentTableRow(
       operationalKeyEquipment(e, options.onRoute),
     fleetMaint: maintenanceBucket(rowMaintMeta),
     fleetVerif: equipmentPhysMechVerificationBucket(e, meta),
-    fleetIns: insuranceBucket(insMeta),
+    fleetIns: insuranceBucket(insMeta, insuranceExpenses, options.today),
     fleetMaintNext: nextMaintenanceTableDate(maintMeta),
     fleetVerifNext: nextEquipmentPhysMechTableDate(e, meta),
-    fleetInsNext: nextInsuranceTableDate(insMeta),
+    fleetInsNext: nextInsuranceTableDate(insMeta, insuranceExpenses),
   };
 }

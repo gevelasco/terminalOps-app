@@ -45,6 +45,14 @@ export function fleetCoverageExpensesQueryRange(today = new Date()): { from: str
   return { from: formatYmd(from), to: formatYmd(to) };
 }
 
+/** Listado de pólizas de la empresa para cards/tablas (mismo ledger que el drawer). */
+export function fleetInsuranceExpensesListParams(
+  today = new Date(),
+): Omit<ExpensesListParams, 'page' | 'limit'> {
+  const range = fleetCoverageExpensesQueryRange(today);
+  return { kind: 'insurance', from: range.from, to: range.to };
+}
+
 function expensesForResource(
   expenses: readonly Expense[],
   kind: FleetCoverageExpenseKind,

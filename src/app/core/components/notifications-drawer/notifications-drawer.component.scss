@@ -36,8 +36,23 @@
 
 .notifications-drawer__tabs-wrap {
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
   padding: 0.85rem 1rem;
   border-bottom: 1px solid color-mix(in srgb, var(--to-color-border) 80%, transparent);
+}
+
+.notifications-drawer__search,
+.notifications-drawer__search to-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+:host ::ng-deep .notifications-drawer__search .to-field,
+:host ::ng-deep .notifications-drawer__search .to-field__control-row {
+  width: 100%;
 }
 
 .notifications-drawer__scroll {

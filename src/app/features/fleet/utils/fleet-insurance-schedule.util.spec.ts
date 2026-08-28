@@ -7,6 +7,7 @@ import {
   isAnnualInsuranceCadence,
   showInsurancePaymentSchedule,
 } from './fleet-insurance-schedule.util';
+import { coverageNextPaymentLabel } from './fleet-ledger-coverage-schedule.util';
 
 const monthlyMeta = {
   insuranceContractDate: '2026-01-15',
@@ -159,5 +160,52 @@ describe('fleet-insurance-schedule.util', () => {
     );
     expect(compliance?.bucket).toBe('soon');
     expect(compliance?.daysUntil).toBe(6);
+  });
+
+  it('uses the first unpaid ledger cycle as the next payment date', () => {
+    const rows = buildInsurancePaymentSchedule({
+      meta: monthlyMeta,
+      expenses: [
+        expense('2026-01-24', '1', { installment: 1, paid: true }),
+        expense('2026-02-24', '2', { installment: 2, paid: true }),
+        expense('2026-03-24', '3', { installment: 3, paid: true }),
+        expense('2026-04-24', '4', { installment: 4, paid: true }),
+        expense('2026-05-24', '5', { installment: 5, paid: true }),
+        expense('2026-06-24', '6', { installment: 6, paid: true }),
+        expense('2026-07-24', '7', { installment: 7, paid: true }),
+        expense('2026-08-24', '8', { installment: 8, paid: true }),
+        expense('2026-09-24', '9', { installment: 9, paid: false }),
+      ],
+      today: new Date(2026, 7, 28),
+    });
+    expect(coverageNextPaymentLabel(rows, (iso) => iso, '—')).toBe('2026-09-24');
+  });
+
+  it('keeps insurance current when paid cycles cover today and next due is later', () => {
+    const compliance = insurancePaymentCompliance(
+      {
+        insurancePolicyNumber: '0005323322',
+        insuranceContractDate: '2026-01-24',
+        insuranceLastPaymentDate: '2026-01-24',
+        insurancePaymentCadence: 'Mensual',
+        insuranceCost: 6824.41,
+      },
+      {
+        expenses: [
+          expense('2026-01-24', '1', { installment: 1, paid: true }),
+          expense('2026-02-24', '2', { installment: 2, paid: true }),
+          expense('2026-03-24', '3', { installment: 3, paid: true }),
+          expense('2026-04-24', '4', { installment: 4, paid: true }),
+          expense('2026-05-24', '5', { installment: 5, paid: true }),
+          expense('2026-06-24', '6', { installment: 6, paid: true }),
+          expense('2026-07-24', '7', { installment: 7, paid: true }),
+          expense('2026-08-24', '8', { installment: 8, paid: true }),
+          expense('2026-09-24', '9', { installment: 9, paid: false }),
+        ],
+        today: new Date(2026, 7, 28),
+      },
+    );
+    expect(compliance?.bucket).toBe('ok');
+    expect(compliance?.daysUntil).toBe(27);
   });
 });

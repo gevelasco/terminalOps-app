@@ -10,7 +10,7 @@
             <button
               type="button"
               class="fleet-unit-sec__edit-btn"
-              aria-label="Editar Verificaciones"
+              aria-label="Editar verificaciones"
               (click)="vm.startEditVerif()"
             >
               <svg
@@ -28,154 +28,145 @@
           }
         </div>
 
+        @if (vm.physMechExemptionActive()) {
+          <p class="fleet-unit-detail__route-line" role="status">
+            {{ vm.physMechTooltipText() }}
+          </p>
+        }
+
         @if (!vm.isEditing("verif")) {
-          @if (!vm.hasEquipmentVerificationData()) {
-            <p class="fleet-unit-detail__empty-files fleet-unit-detail__empty-files--inline">
-              Sin verificaciones
+          <div
+            class="fleet-unit-detail__badge-block fleet-unit-detail__badge-block--verif"
+          >
+            <p
+              class="fleet-unit-detail__badge-label fleet-unit-detail__badge-label--sentence"
+            >
+              Físico-mecánica
             </p>
-          } @else {
-            @if (vm.physMechExemptionActive()) {
-              <p
-                class="fleet-unit-detail__route-line"
-                style="margin: 0 0 16px"
-                role="status"
-              >
-                {{ vm.physMechTooltipText() }}
-              </p>
-            }
+            <div class="fleet-unit-detail__badge-row">
+              <span class="fleet-unit-detail__badge fleet-unit-detail__badge--neutral">
+                <span class="fleet-unit-detail__dot" aria-hidden="true"></span>
+                {{ vm.formatYmd(vm.meta()?.verificationPhysMechDate) }}
+              </span>
+              <span [class]="vm.badgeRenewalClass(vm.physMechRenewalBucketForUi())">
+                <span class="fleet-unit-detail__dot" aria-hidden="true"></span>
+                Próx.:
+                {{ vm.physMechNextShortLabel() }}
+              </span>
+            </div>
+            <p class="fleet-unit-detail__verif-tracking">
+              Costo:
+              {{ vm.formatTrackingAmount(vm.meta()?.verificationPhysMechCost) }}
+            </p>
+          </div>
 
-            @if (vm.meta()?.verificationPhysMechDate?.trim()) {
-              <div
-                class="fleet-unit-detail__badge-block fleet-unit-detail__badge-block--verif"
-              >
-                <p
-                  class="fleet-unit-detail__badge-label fleet-unit-detail__badge-label--sentence"
-                >
-                  Físico-mecánica
-                </p>
-                <div class="fleet-unit-detail__badge-row">
-                  <span
-                    class="fleet-unit-detail__badge fleet-unit-detail__badge--neutral"
-                  >
-                    <span class="fleet-unit-detail__dot" aria-hidden="true"></span>
-                    {{ vm.formatYmd(vm.meta()?.verificationPhysMechDate) }}
-                  </span>
-                  <span
-                    [class]="
-                      vm.badgeRenewalClass(vm.physMechRenewalBucketForUi())
-                    "
-                  >
-                    <span class="fleet-unit-detail__dot" aria-hidden="true"></span>
-                    Próx.:
-                    {{ vm.physMechNextShortLabel() }}
-                  </span>
-                </div>
-                <p class="fleet-unit-detail__verif-tracking">
-                  Costo:
-                  {{
-                    vm.formatTrackingAmount(vm.meta()?.verificationPhysMechCost)
-                  }}
-                </p>
-              </div>
-            }
-
+          <div
+            class="fleet-unit-detail__badge-block fleet-unit-detail__badge-block--verif"
+          >
+            <p
+              class="fleet-unit-detail__badge-label fleet-unit-detail__badge-label--sentence"
+            >
+              Doble articulado
+            </p>
             @if (vm.meta()?.verificationDoubleArticulatedApplies === true) {
-              <div
-                class="fleet-unit-detail__badge-block fleet-unit-detail__badge-block--verif"
-                style="margin-top: 16px"
-              >
-                <p
-                  class="fleet-unit-detail__badge-label fleet-unit-detail__badge-label--sentence"
+              <div class="fleet-unit-detail__badge-row">
+                <span
+                  class="fleet-unit-detail__badge fleet-unit-detail__badge--neutral"
                 >
-                  Doble articulado
-                </p>
-                <div class="fleet-unit-detail__badge-row">
-                  <span
-                    class="fleet-unit-detail__badge fleet-unit-detail__badge--neutral"
-                  >
-                    <span class="fleet-unit-detail__dot" aria-hidden="true"></span>
-                    {{
-                      vm.formatYmd(vm.meta()?.verificationDoubleArticulatedDate)
-                    }}
-                  </span>
-                  <span
-                    [class]="
-                      vm.badgeRenewalClass(
-                        vm.renewalBucketFor(
-                          vm.meta()?.verificationDoubleArticulatedDate
-                        )
-                      )
-                    "
-                  >
-                    <span class="fleet-unit-detail__dot" aria-hidden="true"></span>
-                    Próx.:
-                    {{
-                      vm.nextMx(
-                        vm.meta()?.verificationDoubleArticulatedDate,
-                        vm.verifCycleMo
-                      )
-                    }}
-                  </span>
-                </div>
-                <p class="fleet-unit-detail__verif-tracking">
-                  Costo:
+                  <span class="fleet-unit-detail__dot" aria-hidden="true"></span>
+                  {{ vm.formatYmd(vm.meta()?.verificationDoubleArticulatedDate) }}
+                </span>
+                <span
+                  [class]="
+                    vm.badgeRenewalClass(
+                      vm.renewalBucketFor(vm.meta()?.verificationDoubleArticulatedDate)
+                    )
+                  "
+                >
+                  <span class="fleet-unit-detail__dot" aria-hidden="true"></span>
+                  Próx.:
                   {{
-                    vm.formatTrackingAmount(
-                      vm.meta()?.verificationDoubleArticulatedCost
+                    vm.nextMx(
+                      vm.meta()?.verificationDoubleArticulatedDate,
+                      vm.verifCycleMo
                     )
                   }}
-                </p>
+                </span>
               </div>
-            }
-
-            <h4 class="fleet-unit-sec__subtitle" style="margin-top: 20px">
-              Documentos de verificación
-            </h4>
-            @if (vm.docs("verification").length > 0) {
-              <ul class="fleet-unit-detail__doc-list">
-                @for (doc of vm.docs("verification"); track doc.id) {
-                  <li class="fleet-unit-detail__doc-item">
-                    <button
-                      type="button"
-                      class="fleet-unit-detail__doc-link"
-                      (click)="vm.downloadStoredDocument(doc)"
-                    >
-                      {{ doc.fileName }}
-                    </button>
-                  </li>
-                }
-              </ul>
+              <p class="fleet-unit-detail__verif-tracking">
+                Costo:
+                {{
+                  vm.formatTrackingAmount(vm.meta()?.verificationDoubleArticulatedCost)
+                }}
+              </p>
             } @else {
-              <p class="fleet-unit-detail__route-line">Sin archivos registrados.</p>
+              <p class="fleet-unit-detail__plain">
+                {{ vm.doubleArticLabel(vm.meta()) }}
+              </p>
             }
+          </div>
+
+          <h4 class="fleet-unit-sec__subtitle">Documentos de verificación</h4>
+          @if (vm.docs("verification").length > 0) {
+            <ul class="fleet-unit-detail__doc-list">
+              @for (doc of vm.docs("verification"); track doc.id) {
+                <li class="fleet-unit-detail__doc-item">
+                  <button
+                    type="button"
+                    class="fleet-unit-detail__doc-link"
+                    (click)="vm.downloadStoredDocument(doc)"
+                  >
+                    {{ doc.fileName }}
+                  </button>
+                </li>
+              }
+            </ul>
+          } @else {
+            <p class="fleet-unit-detail__route-line">Sin archivos registrados.</p>
           }
         } @else {
           <div class="fleet-unit-sec__edit-form">
-            <div class="fleet-unit-toggle-row">
-              <span
-                class="fleet-unit-toggle-row__label"
-                id="fleet-eqd-phys-mech-label"
+            <div
+              class="fleet-unit-detail__badge-block fleet-unit-detail__badge-block--verif"
+            >
+              <p
+                class="fleet-unit-detail__badge-label fleet-unit-detail__badge-label--sentence"
               >
-                Aplica verificación físico-mecánica
-              </span>
-              <button
-                type="button"
-                class="fleet-unit-toggle"
-                [class.fleet-unit-toggle--on]="vm.editPhysMechApplies()"
-                role="switch"
-                [attr.aria-checked]="vm.editPhysMechApplies()"
-                aria-labelledby="fleet-eqd-phys-mech-label"
-                (click)="vm.toggleEditPhysMechApplies()"
-              >
-                <span class="fleet-unit-toggle__thumb" aria-hidden="true"></span>
-              </button>
-            </div>
-            @if (vm.editPhysMechApplies()) {
+                Físico-mecánica
+              </p>
+              @if (vm.hasVerifDate(vm.meta()?.verificationPhysMechDate)) {
+                <div class="fleet-unit-detail__verif-section-header">
+                  <div class="fleet-unit-detail__badge-row">
+                    <span
+                      class="fleet-unit-detail__badge fleet-unit-detail__badge--neutral"
+                    >
+                      <span class="fleet-unit-detail__dot" aria-hidden="true"></span>
+                      {{ vm.formatYmd(vm.meta()?.verificationPhysMechDate) }}
+                    </span>
+                    <span
+                      [class]="vm.badgeRenewalClass(vm.physMechRenewalBucketForUi())"
+                    >
+                      <span class="fleet-unit-detail__dot" aria-hidden="true"></span>
+                      Próx.:
+                      {{ vm.physMechNextShortLabel() }}
+                    </span>
+                    <button
+                      type="button"
+                      class="fleet-unit-files__rm"
+                      aria-label="Eliminar verificación físico-mecánica"
+                      (click)="vm.requestClearVerification('phys_mech')"
+                    >
+                      <to-icon name="delete" [size]="16" />
+                    </button>
+                  </div>
+                </div>
+              }
               <div class="fleet-unit-sec__edit-grid">
                 <to-input
                   label="Fecha de la verificación *"
                   type="date"
                   [max]="vm.today"
+                  [disabled]="vm.physVerifInputsDisabled()"
                   [(value)]="vm.editPhysMechDate"
                 />
                 <to-input
@@ -183,31 +174,60 @@
                   type="text"
                   [groupThousands]="true"
                   placeholder="Ej. 950"
+                  [disabled]="vm.physVerifInputsDisabled()"
                   [(value)]="vm.editPhysMechCost"
                 />
               </div>
-            }
-
-            <div class="fleet-unit-toggle-row">
-              <span
-                class="fleet-unit-toggle-row__label"
-                id="fleet-eqd-double-artic-label"
-              >
-                Aplica verificación de doble articulado
-              </span>
-              <button
-                type="button"
-                class="fleet-unit-toggle"
-                [class.fleet-unit-toggle--on]="vm.editDoubleArticApplies()"
-                role="switch"
-                [attr.aria-checked]="vm.editDoubleArticApplies()"
-                aria-labelledby="fleet-eqd-double-artic-label"
-                (click)="vm.toggleEditDoubleArticApplies()"
-              >
-                <span class="fleet-unit-toggle__thumb" aria-hidden="true"></span>
-              </button>
             </div>
-            @if (vm.editDoubleArticApplies()) {
+
+            <div
+              class="fleet-unit-detail__badge-block fleet-unit-detail__badge-block--verif"
+            >
+              <p
+                class="fleet-unit-detail__badge-label fleet-unit-detail__badge-label--sentence"
+              >
+                Doble articulado
+              </p>
+              @if (vm.hasVerifDate(vm.meta()?.verificationDoubleArticulatedDate)) {
+                <div class="fleet-unit-detail__verif-section-header">
+                  <div class="fleet-unit-detail__badge-row">
+                    <span
+                      class="fleet-unit-detail__badge fleet-unit-detail__badge--neutral"
+                    >
+                      <span class="fleet-unit-detail__dot" aria-hidden="true"></span>
+                      {{
+                        vm.formatYmd(vm.meta()?.verificationDoubleArticulatedDate)
+                      }}
+                    </span>
+                    <span
+                      [class]="
+                        vm.badgeRenewalClass(
+                          vm.renewalBucketFor(
+                            vm.meta()?.verificationDoubleArticulatedDate
+                          )
+                        )
+                      "
+                    >
+                      <span class="fleet-unit-detail__dot" aria-hidden="true"></span>
+                      Próx.:
+                      {{
+                        vm.nextMx(
+                          vm.meta()?.verificationDoubleArticulatedDate,
+                          vm.verifCycleMo
+                        )
+                      }}
+                    </span>
+                    <button
+                      type="button"
+                      class="fleet-unit-files__rm"
+                      aria-label="Eliminar verificación de doble articulado"
+                      (click)="vm.requestClearVerification('double_articulated')"
+                    >
+                      <to-icon name="delete" [size]="16" />
+                    </button>
+                  </div>
+                </div>
+              }
               <div class="fleet-unit-sec__edit-grid">
                 <to-input
                   label="Fecha de la verificación *"
@@ -223,76 +243,74 @@
                   [(value)]="vm.editDoubleArticCost"
                 />
               </div>
-            }
+            </div>
 
-            @if (vm.showEditVerificationDocs()) {
-              <div class="fleet-unit-docs">
-                <div class="fleet-unit-docs__head">
-                  <h4 class="fleet-unit-sec__subtitle">Documentos de verificación</h4>
-                  <span class="fleet-unit-sec__docs-hint">(PDF, JPG, PNG, etc.)</span>
-                </div>
-                @if (vm.editVerifDocs().length > 0) {
-                  <ul class="fleet-unit-files">
-                    @for (doc of vm.editVerifDocs(); track doc.id) {
-                      <li class="fleet-unit-files__row">
-                        <span class="fleet-unit-files__name">{{ doc.fileName }}</span>
-                        <button
-                          type="button"
-                          class="fleet-unit-files__rm"
-                          aria-label="Quitar archivo"
-                          (click)="vm.removeEditVerifDoc($index)"
-                        >
-                          <to-icon name="delete" [size]="16" />
-                        </button>
-                      </li>
-                    }
-                  </ul>
-                } @else {
-                  <p class="fleet-unit-detail__empty-files">
-                    Sin documentos en la lista (puedes agregar abajo).
-                  </p>
-                }
-                <div class="fleet-unit-upload">
-                  <input
-                    #fileVerif
-                    type="file"
-                    class="fleet-unit-upload__input"
-                    tabindex="-1"
-                    multiple
-                    accept="image/*,.pdf,application/pdf"
-                    (change)="vm.onEditVerifFiles($event)"
-                  />
-                  <button
-                    type="button"
-                    class="fleet-unit-upload__btn"
-                    (click)="fileVerif.click()"
-                  >
-                    <to-icon name="upload" [size]="14" />
-                    Elegir archivos
-                  </button>
-                </div>
-                @if (vm.editVerifNewFiles().length > 0) {
-                  <ul class="fleet-unit-files">
-                    @for (
-                      f of vm.editVerifNewFiles();
-                      track vm.trackFileEntry($index, f)
-                    ) {
-                      <li class="fleet-unit-files__row">
-                        <span class="fleet-unit-files__name">{{ f.name }}</span>
-                        <button
-                          type="button"
-                          class="fleet-unit-files__rm"
-                          aria-label="Quitar archivo"
-                          (click)="vm.removeEditVerifNewFile($index)"
-                        >
-                          <to-icon name="delete" [size]="16" />
-                        </button>
-                      </li>
-                    }
-                  </ul>
-                }
+            <div class="fleet-unit-docs">
+              <div class="fleet-unit-docs__head">
+                <h4 class="fleet-unit-sec__subtitle">Documentos de verificación</h4>
+                <span class="fleet-unit-sec__docs-hint">(PDF, JPG, PNG, etc.)</span>
               </div>
-            }
+              @if (vm.editVerifDocs().length > 0) {
+                <ul class="fleet-unit-files">
+                  @for (doc of vm.editVerifDocs(); track doc.id) {
+                    <li class="fleet-unit-files__row">
+                      <span class="fleet-unit-files__name">{{ doc.fileName }}</span>
+                      <button
+                        type="button"
+                        class="fleet-unit-files__rm"
+                        aria-label="Quitar archivo"
+                        (click)="vm.removeEditVerifDoc($index)"
+                      >
+                        <to-icon name="delete" [size]="16" />
+                      </button>
+                    </li>
+                  }
+                </ul>
+              } @else {
+                <p class="fleet-unit-detail__empty-files">
+                  Sin documentos en la lista (puedes agregar abajo).
+                </p>
+              }
+              <div class="fleet-unit-upload">
+                <input
+                  #fileVerif
+                  type="file"
+                  class="fleet-unit-upload__input"
+                  tabindex="-1"
+                  multiple
+                  accept="image/*,.pdf,application/pdf"
+                  (change)="vm.onEditVerifFiles($event)"
+                />
+                <button
+                  type="button"
+                  class="fleet-unit-upload__btn"
+                  (click)="fileVerif.click()"
+                >
+                  <to-icon name="upload" [size]="14" />
+                  Elegir archivos
+                </button>
+              </div>
+              @if (vm.editVerifNewFiles().length > 0) {
+                <ul class="fleet-unit-files">
+                  @for (
+                    f of vm.editVerifNewFiles();
+                    track vm.trackFileEntry($index, f)
+                  ) {
+                    <li class="fleet-unit-files__row">
+                      <span class="fleet-unit-files__name">{{ f.name }}</span>
+                      <button
+                        type="button"
+                        class="fleet-unit-files__rm"
+                        aria-label="Quitar archivo"
+                        (click)="vm.removeEditVerifNewFile($index)"
+                      >
+                        <to-icon name="delete" [size]="16" />
+                      </button>
+                    </li>
+                  }
+                </ul>
+              }
+            </div>
 
             <div class="fleet-unit-sec__edit-actions">
               <to-button
@@ -317,3 +335,27 @@
           </div>
         }
       </section>
+
+      <to-confirm-dialog
+        titleId="fleet-eq-verif-clear-title"
+        icon="warning"
+        title="Eliminar verificación"
+        cancelLabel="Cancelar"
+        confirmLabel="Confirmar"
+        confirmVariant="primary"
+        [open]="vm.verifClearConfirmScope() !== null"
+        [confirmLoading]="vm.saving()"
+        [confirmDisabled]="vm.saving()"
+        (cancel)="vm.closeClearVerificationConfirm()"
+        (confirm)="vm.confirmClearVerification()"
+      >
+        <p class="maniobra-detail__delete-copy">
+          Se eliminará la verificación de
+          <strong>{{ vm.verifClearConfirmName() }}</strong>
+          de este equipo y se descartarán el gasto actual y el próximo a 6 meses
+          en el ledger.
+        </p>
+        <p class="maniobra-detail__delete-copy">
+          Los pagos anteriores se conservan. Esta acción no se puede deshacer.
+        </p>
+      </to-confirm-dialog>

@@ -2,6 +2,7 @@ import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core'
 import type { FleetDetailDrawerTab } from '@features/fleet/components/fleet-detail-drawer.types';
 import { EquipmentFeatureService } from './equipment.service';
 import { FleetCatalogFeatureService } from './fleet-catalog.service';
+import { FleetCoverageExpensesFeatureService } from './fleet-coverage-expenses.service';
 import { FleetOverviewFeatureService } from './fleet-overview.service';
 import { UnitsFeatureService } from './units.service';
 import type { FleetBrandType } from '@shared/models/api/fleet-catalog.model';
@@ -20,6 +21,7 @@ export class FleetFeatureService {
   private readonly catalogFeature = inject(FleetCatalogFeatureService);
   private readonly unitsFeature = inject(UnitsFeatureService);
   private readonly equipmentFeature = inject(EquipmentFeatureService);
+  private readonly coverageExpensesFeature = inject(FleetCoverageExpensesFeatureService);
 
   private disposed = false;
   private readonly _pendingDetailTab = signal<FleetDetailDrawerTab | null>(null);
@@ -55,6 +57,7 @@ export class FleetFeatureService {
 
   readonly units = this.unitsFeature.units;
   readonly equipment = this.equipmentFeature.equipment;
+  readonly coverageExpenses = this.coverageExpensesFeature.expenses;
   readonly selectedUnit = this.unitsFeature.selectedUnit;
   readonly selectedEquipment = this.equipmentFeature.selectedEquipment;
   readonly pendingDetailTab = this._pendingDetailTab.asReadonly();
@@ -64,8 +67,11 @@ export class FleetFeatureService {
     if (this.disposed) {
       return;
     }
+    this.coverageExpensesFeature.loadExpenses();
     if (tab === 'overview') {
       this.overviewFeature.loadOverview();
+      this.unitsFeature.loadUnits();
+      this.equipmentFeature.loadEquipment();
       return;
     }
     if (tab === 'units') {
@@ -125,6 +131,16 @@ export class FleetFeatureService {
     if (this.overviewFeature.hasLoadedOnce()) {
       this.overviewFeature.refreshOverview();
     }
+    if (this.coverageExpensesFeature.hasLoadedOnce()) {
+      this.coverageExpensesFeature.refreshExpenses();
+    }
+  }
+
+  refreshCoverageExpenses(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.coverageExpensesFeature.refreshExpenses();
   }
 
   requestDetailTab(tab: FleetDetailDrawerTab): void {
@@ -162,5 +178,6 @@ export class FleetFeatureService {
     this.catalogFeature.dispose();
     this.unitsFeature.dispose();
     this.equipmentFeature.dispose();
+    this.coverageExpensesFeature.dispose();
   }
 }

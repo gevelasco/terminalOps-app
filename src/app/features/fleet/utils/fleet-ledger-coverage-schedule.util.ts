@@ -120,6 +120,28 @@ export function buildLedgerCoverageSchedule(params: {
   return rows;
 }
 
+/** Primera cuota aún no pagada. Si todas están pagadas, no hay próximo. */
+export function nextUnpaidCoverageDueYmd(
+  rows: readonly LedgerCoverageScheduleRow[],
+): string | null {
+  return rows.find((row) => row.status !== 'paid')?.dueDate ?? null;
+}
+
+export function coverageNextPaymentLabel(
+  rows: readonly LedgerCoverageScheduleRow[],
+  formatYmd: (iso: string) => string,
+  fallback: string,
+): string {
+  const due = nextUnpaidCoverageDueYmd(rows);
+  if (due) {
+    return formatYmd(due);
+  }
+  if (rows.length > 0) {
+    return 'Al corriente';
+  }
+  return fallback;
+}
+
 export function coverageComplianceFromSchedule(
   rows: readonly LedgerCoverageScheduleRow[],
   today: Date = new Date(),

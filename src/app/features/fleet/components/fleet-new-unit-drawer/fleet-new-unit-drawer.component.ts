@@ -15,6 +15,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { catchError, forkJoin, of, switchMap, throwError } from 'rxjs';
 import { ToastService } from '@core/notifications/toast.service';
+import { ExpensesService } from '@core/services/api/expenses';
 import { UnitsService as UnitsApiService } from '@core/services/api/units';
 import { PlanEntitlementService } from '@shared/billing/plan-entitlement.service';
 import { FleetFeatureService } from '@features/fleet/services/fleet.service';
@@ -25,6 +26,11 @@ import {
   fleetModelYearErrorMessage,
   parseFleetModelYear,
 } from '@features/fleet/utils/fleet-drawer-form.utils';
+import {
+  fleetModelTwoYearExemptionEndYmd,
+  isWithinFleetModelTwoYearExemption,
+} from '@features/fleet/utils/fleet-verification-exemption.util';
+import { formatFleetYmdMx } from '@features/fleet/utils/fleet-unit-table-row';
 import {
   MaintenanceEntry,
   TrailerTenureMode,
@@ -53,6 +59,11 @@ import {
 import { EXPENSE_PAYMENT_METHOD_OPTIONS } from '@shared/catalogs/expense-form-options';
 import { gpsFleetFormHasContent } from '@features/fleet/utils/fleet-gps-payment.util';
 import { cyclicRenewalHint } from '@features/fleet/utils/fleet-cyclic-renewal-hint';
+import {
+  buildFleetMaintenanceExpensePayload,
+  FLEET_MAINTENANCE_LEDGER_ERROR,
+  type FleetMaintenanceExpenseInput,
+} from '@features/fleet/utils/fleet-maintenance-expense.util';
 
 type RenewUi = 'due' | 'soon' | 'ok' | null;
 
@@ -159,6 +170,7 @@ export class FleetNewUnitDrawerComponent {
   private readonly fleetFeature = inject(FleetFeatureService);
   private readonly unitsFeature = inject(UnitsFeatureService);
   private readonly unitsApi = inject(UnitsApiService);
+  private readonly expensesApi = inject(ExpensesService);
   private readonly planEntitlements = inject(PlanEntitlementService);
   private readonly toast = inject(ToastService);
 
@@ -283,6 +295,21 @@ export class FleetNewUnitDrawerComponent {
       : null,
   );
 
+  readonly physEmisExemptionActive = computed(() => {
+    const parsed = parseFleetModelYear(this.modelYear());
+    return parsed.ok && isWithinFleetModelTwoYearExemption(parsed.year);
+  });
+
+  readonly physEmisExemptionMessage = computed(() => {
+    const parsed = parseFleetModelYear(this.modelYear());
+    if (!parsed.ok) {
+      return '';
+    }
+    const end = fleetModelTwoYearExemptionEndYmd(parsed.year);
+    const endFmt = end ? formatFleetYmdMx(end) : '—';
+    return `Modelo ${parsed.year}: exento de físico-mecánica y emisiones hasta el ${endFmt}. Se programará el primer gasto en el ledger para esa fecha.`;
+  });
+
   readonly insuranceRenewHint = computed(() =>
     cyclicRenewalHint(this.insuranceContractDate().trim(), this.insurancePaymentCadence()),
   );
@@ -307,6 +334,20 @@ export class FleetNewUnitDrawerComponent {
         this.filesVerification.set([]);
       }
     });
+    effect(
+      () => {
+        if (!this.physEmisExemptionActive()) {
+          return;
+        }
+        this.physMechApplies.set(true);
+        this.emissionsApplies.set(true);
+        this.verificationPhysMechDate.set('');
+        this.verificationPhysMechCost.set('');
+        this.verificationEmissionsDate.set('');
+        this.verificationEmissionsCost.set('');
+      },
+      { allowSignalWrites: true },
+    );
     afterNextRender(() => this.drawerLoading.set(false));
   }
 
@@ -373,6 +414,9 @@ export class FleetNewUnitDrawerComponent {
   }
 
   togglePhysMechSwitch(): void {
+    if (this.physEmisExemptionActive()) {
+      return;
+    }
     const next = !this.physMechApplies();
     this.physMechApplies.set(next);
     if (!next) {
@@ -382,6 +426,9 @@ export class FleetNewUnitDrawerComponent {
   }
 
   toggleEmissionsSwitch(): void {
+    if (this.physEmisExemptionActive()) {
+      return;
+    }
     const next = !this.emissionsApplies();
     this.emissionsApplies.set(next);
     if (!next) {
@@ -457,14 +504,14 @@ export class FleetNewUnitDrawerComponent {
       }
     }
 
-    if (this.physMechApplies() && !this.verificationPhysMechDate().trim()) {
+    if (this.physMechApplies() && !this.physEmisExemptionActive() && !this.verificationPhysMechDate().trim()) {
       this.toast.show(
         'Si aplica verificación físico-mecánica, indica la fecha.',
         'warning',
       );
       return;
     }
-    if (this.emissionsApplies() && !this.verificationEmissionsDate().trim()) {
+    if (this.emissionsApplies() && !this.physEmisExemptionActive() && !this.verificationEmissionsDate().trim()) {
       this.toast.show('Si aplica verificación de emisiones, indica la fecha.', 'warning');
       return;
     }
@@ -473,12 +520,14 @@ export class FleetNewUnitDrawerComponent {
       return;
     }
 
-    const physCost = this.physMechApplies()
-      ? parseOptionalAmount(this.verificationPhysMechCost())
-      : undefined;
-    const emisCost = this.emissionsApplies()
-      ? parseOptionalAmount(this.verificationEmissionsCost())
-      : undefined;
+    const physCost =
+      this.physMechApplies() && !this.physEmisExemptionActive()
+        ? parseOptionalAmount(this.verificationPhysMechCost())
+        : undefined;
+    const emisCost =
+      this.emissionsApplies() && !this.physEmisExemptionActive()
+        ? parseOptionalAmount(this.verificationEmissionsCost())
+        : undefined;
     const doubleCost = this.doubleArticApplies()
       ? parseOptionalAmount(this.verificationDoubleCost())
       : undefined;
@@ -611,16 +660,26 @@ export class FleetNewUnitDrawerComponent {
         maintCost === undefined ? undefined : maintCost,
       ),
       tireCondition: tireLabel,
-      verificationPhysMechDate: this.physMechApplies()
-        ? this.verificationPhysMechDate().trim() || undefined
-        : undefined,
+      verificationPhysMechDate:
+        this.physMechApplies() && !this.physEmisExemptionActive()
+          ? this.verificationPhysMechDate().trim() || undefined
+          : undefined,
       verificationPhysMechCost:
-        this.physMechApplies() && physCost !== undefined ? physCost : undefined,
-      verificationEmissionsDate: this.emissionsApplies()
-        ? this.verificationEmissionsDate().trim() || undefined
-        : undefined,
+        this.physMechApplies() &&
+        !this.physEmisExemptionActive() &&
+        physCost !== undefined
+          ? physCost
+          : undefined,
+      verificationEmissionsDate:
+        this.emissionsApplies() && !this.physEmisExemptionActive()
+          ? this.verificationEmissionsDate().trim() || undefined
+          : undefined,
       verificationEmissionsCost:
-        this.emissionsApplies() && emisCost !== undefined ? emisCost : undefined,
+        this.emissionsApplies() &&
+        !this.physEmisExemptionActive() &&
+        emisCost !== undefined
+          ? emisCost
+          : undefined,
       verificationDoubleArticulatedApplies: this.doubleArticApplies(),
       verificationDoubleArticulatedDate: this.doubleArticApplies()
         ? this.verificationDoubleDate().trim() || undefined
@@ -672,6 +731,13 @@ export class FleetNewUnitDrawerComponent {
     if (!beginInFlight(this.saving)) {
       return;
     }
+    const maintLedgerInput: Omit<FleetMaintenanceExpenseInput, 'unitId' | 'equipmentId'> = {
+      date: this.lastMaintenanceDate().trim(),
+      cost: typeof maintCost === 'number' ? maintCost : 0,
+      typeValue: this.lastMaintenanceType(),
+      typeLabel: maintTypeLabel,
+      notes: this.lastMaintenanceNotes().trim() || undefined,
+    };
     this.unitsFeature
       .createUnit({
         plate,
@@ -708,7 +774,8 @@ export class FleetNewUnitDrawerComponent {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        next: () => {
+        next: (created) => {
+          this.postCreatedMaintenanceExpense(created.id, 'unit', maintLedgerInput);
           this.fleetFeature.registerLocalCatalogEntry(
             'UNIT',
             brandName,
@@ -730,6 +797,16 @@ export class FleetNewUnitDrawerComponent {
             'phase' in err &&
             (err as { phase?: string }).phase === 'documents';
           if (docsFailed) {
+            const unitId =
+              typeof err === 'object' &&
+              err !== null &&
+              'unitId' in err &&
+              typeof (err as { unitId?: unknown }).unitId === 'string'
+                ? (err as { unitId: string }).unitId
+                : '';
+            if (unitId) {
+              this.postCreatedMaintenanceExpense(unitId, 'unit', maintLedgerInput);
+            }
             // La unidad ya existe en API; no mostramos éxito completo.
             this.toast.show(
               'La unidad se creó, pero no se pudieron subir los documentos. Ábrela y súbelos de nuevo.',
@@ -742,6 +819,26 @@ export class FleetNewUnitDrawerComponent {
           this.toast.show('No se pudo guardar la unidad.', 'error');
           this.saving.set(false);
         },
+      });
+  }
+
+  private postCreatedMaintenanceExpense(
+    resourceId: string,
+    target: 'unit' | 'equipment',
+    input: Omit<FleetMaintenanceExpenseInput, 'unitId' | 'equipmentId'>,
+  ): void {
+    const payload = buildFleetMaintenanceExpensePayload({
+      ...input,
+      ...(target === 'unit' ? { unitId: resourceId } : { equipmentId: resourceId }),
+    });
+    if (!payload) {
+      return;
+    }
+    this.expensesApi
+      .postExpense(payload)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () => this.toast.show(FLEET_MAINTENANCE_LEDGER_ERROR, 'warning'),
       });
   }
 }

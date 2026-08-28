@@ -449,6 +449,11 @@ export interface UnitFleetMeta {
   verificationDoubleArticulatedApplies?: boolean;
   verificationDoubleArticulatedDate?: string;
   verificationDoubleArticulatedCost?: number;
+  /**
+   * Quita la verificación vigente de esos alcances (PATCH).
+   * El API descarta el gasto actual impago y el próximo a 6 meses.
+   */
+  clearedVerificationScopes?: ExpenseVerificationScope[];
   insurancePolicyNumber?: string;
   /** Aseguradora o nombre comercial del seguro (texto libre). */
   insuranceCarrierName?: string;
@@ -591,6 +596,11 @@ export interface EquipmentFleetMeta {
   verificationDoubleArticulatedApplies?: boolean;
   verificationDoubleArticulatedDate?: string;
   verificationDoubleArticulatedCost?: number;
+  /**
+   * Quita la verificación vigente de esos alcances (PATCH).
+   * El API descarta el gasto actual impago y el próximo a 6 meses.
+   */
+  clearedVerificationScopes?: ExpenseVerificationScope[];
   insurancePolicyNumber?: string;
   /** Aseguradora o nombre comercial del seguro (texto libre). */
   insuranceCarrierName?: string;

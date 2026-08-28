@@ -7,9 +7,9 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { forkJoin, of, switchMap, type Observable, type Subscription } from 'rxjs';
+import { forkJoin, map, of, switchMap, type Observable, type Subscription } from 'rxjs';
 import { ToastService } from '@core/notifications/toast.service';
-import { ExpensesService } from '@core/services/api/expenses';
+import { ExpensesService, type ExpenseWritePayload } from '@core/services/api/expenses';
 import { UnitsService as UnitsApiService } from '@core/services/api/units';
 import {
   confirmFleetCoverageSchedulePayment,
@@ -47,6 +47,7 @@ import {
   isAnnualInsuranceCadence,
   showInsurancePaymentSchedule,
 } from '@features/fleet/utils/fleet-insurance-schedule.util';
+import { coverageNextPaymentLabel } from '@features/fleet/utils/fleet-ledger-coverage-schedule.util';
 import {
   buildGpsPaymentSchedule,
   gpsServiceYearBounds,
@@ -71,7 +72,12 @@ import {
   attachFleetMaintenanceDocNamesToNewestEntry,
   isSubstantiveMaintenanceEntry,
 } from '@features/fleet/utils/fleet-maintenance-entry.util';
+import {
+  buildFleetMaintenanceExpensePayload,
+  FLEET_MAINTENANCE_LEDGER_ERROR,
+} from '@features/fleet/utils/fleet-maintenance-expense.util';
 import { formatMaintenanceKmCounterLabel } from '@features/fleet/utils/fleet-maintenance-km.util';
+import { applySyncedFleetDocuments } from '@features/fleet/utils/fleet-synced-documents.util';
 import { FLEET_UNIT_DETAIL_TAB_SYMBOLS } from '@app/features/fleet/utils/fleet-unit-detail-tab-symbols';
 import { deriveFleetBrandAbbr } from '@shared/utils/fleet/derive-fleet-brand-abbr';
 import { fleetBrandDisplayName } from '@shared/utils/fleet/fleet-brand-display';
@@ -90,6 +96,10 @@ import {
   nextMaintenanceTableDate,
   complianceRenewalBucket,
 } from '@app/features/fleet/utils/fleet-unit-table-row';
+import {
+  fleetModelTwoYearExemptionEndYmd,
+  isWithinFleetModelTwoYearExemption,
+} from '@features/fleet/utils/fleet-verification-exemption.util';
 import {
   fleetDrawerTodayIso,
   fleetModelYearErrorMessage,
@@ -132,8 +142,9 @@ import {
   unitConvoyFromEquipment,
 } from '@app/features/fleet/utils/unit-hitched-equipment';
 import {
-  Equipment,
   Expense,
+  ExpenseVerificationScope,
+  Equipment,
   FleetDocumentKind,
   FleetStoredDocument,
   MaintenanceEntry,
@@ -182,6 +193,12 @@ const VERIF_MO = 6;
 const COB_SECTION_PERSIST_OPTIONS: FleetPersistOptions = {
   skipListRefresh: true,
   skipFleetRefresh: true,
+};
+
+/** Tenencia incluye documentos multipart; hay que rehidratar el detalle. */
+const TENURE_SECTION_PERSIST_OPTIONS: FleetPersistOptions = {
+  ...COB_SECTION_PERSIST_OPTIONS,
+  refreshDetail: true,
 };
 
 @Injectable()
@@ -384,7 +401,7 @@ export class FleetUnitDetailDrawerFacade {
   }
 
   private syncHostUnitFromFeatureList(unitId: string): void {
-    if (this.editingSection() !== null || this.verifEntryKind() !== null) {
+    if (this.editingSection() !== null) {
       const incoming = this.unitsFeature.selectedUnit();
       if (incoming) {
         this.applyHostUnitSnapshotWhenRicher(incoming);
@@ -469,7 +486,6 @@ export class FleetUnitDetailDrawerFacade {
       return;
     }
     this.cancelEdit();
-    this.cancelVerifEntry();
     this.addingMaint.set(false);
     this.resetNewMaintForm();
     this.detailTab.set(tab);
@@ -478,6 +494,7 @@ export class FleetUnitDetailDrawerFacade {
   cancelEdit(): void {
     this.clearStagedDocUploads();
     this.cancelHitchForms();
+    this.verifClearConfirmScope.set(null);
     this.editingSection.set(null);
   }
 
@@ -609,11 +626,24 @@ export class FleetUnitDetailDrawerFacade {
     this.saving.set(true);
     this.unitsFeature
       .updateUnit(unitToSend, effectiveDraft, { skipListRefresh: options?.skipListRefresh })
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        switchMap((saved) => {
+          if (!options?.refreshDetail) {
+            return of(saved);
+          }
+          return this.unitsFeature.fetchUnitDetail(saved.id).pipe(
+            map((detail) => detail ?? saved),
+          );
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (saved) => {
           this.saving.set(false);
-          this.unitSource.set(saved);
+          const next = options?.syncedDocuments
+            ? applySyncedFleetDocuments(saved, this.unitSource(), options.syncedDocuments)
+            : saved;
+          this.unitSource.set(next);
           this.unitOverride.set({});
           this.metaOverride.set({});
           this.localMaintEntries.set([]);
@@ -900,72 +930,94 @@ export class FleetUnitDetailDrawerFacade {
     return expensePaymentMethodLabel(code);
   }
 
-  /** Verificación cuyo registro inline está abierto. */
-  readonly verifEntryKind = signal<'phys' | 'emis' | 'double' | null>(null);
-  readonly newVerifDate = signal('');
-  readonly newVerifCost = signal('');
+  readonly editPhysVerifDate = signal('');
+  readonly editPhysVerifCost = signal('');
+  readonly editEmisVerifDate = signal('');
+  readonly editEmisVerifCost = signal('');
+  readonly editDoubleVerifDate = signal('');
+  readonly editDoubleVerifCost = signal('');
+  readonly verifClearConfirmScope = signal<ExpenseVerificationScope | null>(null);
 
-  isVerifEntryOpen(kind: 'phys' | 'emis' | 'double'): boolean {
-    return this.verifEntryKind() === kind;
+  hasVerifDate(iso: string | undefined): boolean {
+    return Boolean(iso?.trim());
   }
 
-  startVerifEntry(kind: 'phys' | 'emis' | 'double'): void {
-    if (!this.canWriteFleet()) {
-      return;
-    }
-    this.newVerifDate.set('');
-    this.newVerifCost.set('');
-    this.verifEntryKind.set(kind);
+  physEmisExemptionActive(): boolean {
+    return isWithinFleetModelTwoYearExemption(this.effUnit().trailerYear);
   }
 
-  cancelVerifEntry(): void {
-    this.verifEntryKind.set(null);
-    this.newVerifDate.set('');
-    this.newVerifCost.set('');
+  physEmisExemptionEndLabel(): string {
+    const end = fleetModelTwoYearExemptionEndYmd(this.effUnit().trailerYear);
+    return end ? formatFleetYmdMx(end) : '—';
   }
 
-  saveVerifEntry(): void {
-    if (!this.canWriteFleet()) {
-      return;
-    }
-    const kind = this.verifEntryKind();
-    if (!kind) {
-      return;
-    }
-    const date = this.newVerifDate().trim();
-    if (!date) {
-      this.toast.show('Indica la fecha de la nueva verificación.', 'warning');
-      return;
-    }
-    if (date > this.today) {
-      this.toast.show('La fecha no puede ser futura.', 'warning');
-      return;
-    }
-    const cost = parseFleetOptionalAmount(this.newVerifCost());
-    if (cost === 'invalid') {
-      this.toast.show('El costo debe ser un número válido (≥ 0).', 'warning');
-      return;
-    }
-    const patch: Partial<UnitFleetMeta> = {};
-    if (kind === 'phys') {
-      patch.verificationPhysMechDate = date;
-      patch.verificationPhysMechCost = cost === undefined ? undefined : cost;
-    } else if (kind === 'emis') {
-      patch.verificationEmissionsDate = date;
-      patch.verificationEmissionsCost = cost === undefined ? undefined : cost;
-    } else {
-      patch.verificationDoubleArticulatedApplies = true;
-      patch.verificationDoubleArticulatedDate = date;
-      patch.verificationDoubleArticulatedCost = cost === undefined ? undefined : cost;
-    }
-    this.metaOverride.update((prev) => ({ ...prev, ...patch }));
-    this.cancelVerifEntry();
-    this.persistCurrentUnit(
-      'Verificación registrada.',
-      { fleetMeta: patch },
-      COB_SECTION_PERSIST_OPTIONS,
-    );
+  physEmisExemptionMessage(): string {
+    const year = (this.effUnit().trailerYear ?? '').trim();
+    const why = year ? ` Motivo: modelo ${year}.` : '';
+    return `Físico-mecánica y emisiones: no aplican el ciclo de 6 meses durante 2 años.${why} El seguimiento rige a partir del ${this.physEmisExemptionEndLabel()} y el primer gasto queda programado en el ledger.`;
   }
+
+  physVerifInputsDisabled(): boolean {
+    return this.physEmisExemptionActive();
+  }
+
+  emissionsVerifInputsDisabled(): boolean {
+    return this.physEmisExemptionActive();
+  }
+
+  verifNextLabel(iso: string | undefined, exempt: boolean): string {
+    if (iso?.trim()) {
+      return this.nextMx(iso, this.verifCycleMo);
+    }
+    return exempt ? this.physEmisExemptionEndLabel() : '—';
+  }
+
+  verifRenewalBucket(iso: string | undefined, exempt: boolean): FleetRenewalBucket {
+    if (exempt && !iso?.trim()) {
+      return 'ok';
+    }
+    return this.renewalBucketFor(iso);
+  }
+
+  requestClearVerification(scope: ExpenseVerificationScope): void {
+    if (!this.canWriteFleet() || this.saving()) {
+      return;
+    }
+    this.verifClearConfirmScope.set(scope);
+  }
+
+  closeClearVerificationConfirm(): void {
+    this.verifClearConfirmScope.set(null);
+  }
+
+  verifClearConfirmName(): string {
+    switch (this.verifClearConfirmScope()) {
+      case 'phys_mech':
+        return 'físico-mecánica';
+      case 'emissions':
+        return 'emisiones';
+      case 'double_articulated':
+        return 'doble articulado';
+      default:
+        return 'esta verificación';
+    }
+  }
+
+  confirmClearVerification(): void {
+    const scope = this.verifClearConfirmScope();
+    if (!scope || this.saving()) {
+      return;
+    }
+    this.verifClearConfirmScope.set(null);
+    const fleetMeta: Partial<UnitFleetMeta> = {
+      clearedVerificationScopes: [scope],
+    };
+    if (scope === 'double_articulated') {
+      fleetMeta.verificationDoubleArticulatedApplies = false;
+    }
+    this.persistCurrentUnit('Verificación eliminada.', { fleetMeta }, COB_SECTION_PERSIST_OPTIONS);
+  }
+
   // -- Seguro: form signals --
   readonly editInsCarrierName = signal('');
   readonly editInsPolicyNumber = signal('');
@@ -1017,8 +1069,18 @@ export class FleetUnitDetailDrawerFacade {
   }
 
   startEditVerif(): void {
+    if (!this.canWriteFleet()) {
+      return;
+    }
     this.requestFocusDetailTab('cob');
     this.clearStagedDocUploads();
+    this.verifClearConfirmScope.set(null);
+    this.editPhysVerifDate.set('');
+    this.editPhysVerifCost.set('');
+    this.editEmisVerifDate.set('');
+    this.editEmisVerifCost.set('');
+    this.editDoubleVerifDate.set('');
+    this.editDoubleVerifCost.set('');
     this.editVerifDocs.set([...this.docs('verif')]);
     this.editingSection.set('verif');
   }
@@ -1042,22 +1104,40 @@ export class FleetUnitDetailDrawerFacade {
   }
 
   saveEditVerif(): void {
-    if (this.saving()) {
+    if (!this.canWriteFleet() || this.saving()) {
+      return;
+    }
+    const fleetMeta = this.buildUnitVerifEditPatch();
+    if (fleetMeta === 'invalid') {
       return;
     }
     const original = this.docs('verif');
     const kept = this.editVerifDocs();
     const files = this.editVerifNewFiles();
+    const hasMetaPatch = Object.keys(fleetMeta).length > 0;
     this.saving.set(true);
     this.syncUnitDocuments('verification', kept, files, original)
       .pipe(
-        switchMap(() => this.unitsFeature.fetchUnitDetail(this.effUnit().id)),
+        switchMap(() =>
+          hasMetaPatch
+            ? of(null)
+            : this.unitsFeature.fetchUnitDetail(this.effUnit().id),
+        ),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
         next: (detail) => {
-          this.saving.set(false);
           this.editVerifNewFiles.set([]);
+          if (hasMetaPatch) {
+            this.saving.set(false);
+            this.persistCurrentUnit(
+              'Verificaciones actualizadas.',
+              { fleetMeta },
+              COB_SECTION_PERSIST_OPTIONS,
+            );
+            return;
+          }
+          this.saving.set(false);
           if (detail) {
             this.unitSource.set(detail);
             this.unitsFeature.upsertUnitSummary(detail);
@@ -1068,9 +1148,67 @@ export class FleetUnitDetailDrawerFacade {
         },
         error: () => {
           this.saving.set(false);
-          this.toast.show('No se pudieron guardar los documentos.', 'error');
+          this.toast.show('No se pudieron guardar las verificaciones.', 'error');
         },
       });
+  }
+
+  private buildUnitVerifEditPatch(): Partial<UnitFleetMeta> | 'invalid' {
+    const patch: Partial<UnitFleetMeta> = {};
+    const apply = (
+      dateRaw: string,
+      costRaw: string,
+      disabled: boolean,
+      assign: (date: string, cost: number | undefined) => void,
+    ): boolean => {
+      if (disabled) {
+        return true;
+      }
+      const date = dateRaw.trim();
+      if (!date) {
+        return true;
+      }
+      if (date > this.today) {
+        this.toast.show('La fecha no puede ser futura.', 'warning');
+        return false;
+      }
+      const cost = parseFleetOptionalAmount(costRaw);
+      if (cost === 'invalid') {
+        this.toast.show('El costo debe ser un número válido (≥ 0).', 'warning');
+        return false;
+      }
+      assign(date, cost === undefined ? undefined : cost);
+      return true;
+    };
+
+    if (
+      !apply(
+        this.editPhysVerifDate(),
+        this.editPhysVerifCost(),
+        this.physVerifInputsDisabled(),
+        (date, cost) => {
+          patch.verificationPhysMechDate = date;
+          patch.verificationPhysMechCost = cost;
+        },
+      ) ||
+      !apply(
+        this.editEmisVerifDate(),
+        this.editEmisVerifCost(),
+        this.emissionsVerifInputsDisabled(),
+        (date, cost) => {
+          patch.verificationEmissionsDate = date;
+          patch.verificationEmissionsCost = cost;
+        },
+      ) ||
+      !apply(this.editDoubleVerifDate(), this.editDoubleVerifCost(), false, (date, cost) => {
+        patch.verificationDoubleArticulatedApplies = true;
+        patch.verificationDoubleArticulatedDate = date;
+        patch.verificationDoubleArticulatedCost = cost;
+      })
+    ) {
+      return 'invalid';
+    }
+    return patch;
   }
 
   saveEditInsurance(): void {
@@ -1279,26 +1417,41 @@ export class FleetUnitDetailDrawerFacade {
       return;
     }
 
-    const metaPatch: Partial<UnitFleetMeta> = {};
+    const typeLabel = this.maintTypeLabel(this.newMaintType());
+    const notes = this.newMaintNotes().trim() || undefined;
+    const paymentMethod = this.newMaintPaymentMethod().trim() || undefined;
+    const typeValue = this.newMaintType();
+    const metaPatch: Partial<UnitFleetMeta> = {
+      lastMaintenanceDate: date,
+      lastMaintenanceType: typeLabel,
+      lastMaintenanceCost: cost,
+      lastMaintenanceNotes: notes,
+    };
     if (this.companyKmMaintControlActive()) {
       metaPatch.maintenanceKmCounter = 0;
     }
 
-    if (Object.keys(metaPatch).length > 0) {
-      this.metaOverride.update((p) => ({ ...p, ...metaPatch }));
-    }
+    this.metaOverride.update((p) => ({ ...p, ...metaPatch }));
 
     const files = this.newMaintFiles();
-    const paymentMethod = this.newMaintPaymentMethod().trim() || undefined;
     const entry: MaintenanceEntry = {
       date,
-      type: this.maintTypeLabel(this.newMaintType()),
+      type: typeLabel,
       cost,
-      notes: this.newMaintNotes().trim() || undefined,
+      notes,
       paymentMethod,
       documentNames: files.length > 0 ? files.map((f) => f.name) : undefined,
       status: 'concluido',
     };
+    const ledgerPayload = buildFleetMaintenanceExpensePayload({
+      date,
+      cost,
+      typeValue,
+      typeLabel,
+      notes,
+      paymentMethod,
+      unitId: this.effUnit().id,
+    });
     if (this.saving()) {
       return;
     }
@@ -1312,12 +1465,9 @@ export class FleetUnitDetailDrawerFacade {
           this.addingMaint.set(false);
           this.resetNewMaintForm();
           this.saving.set(false);
-          this.persistCurrentUnit(
-            'Mantenimiento agregado.',
-            Object.keys(metaPatch).length > 0
-              ? { fleetMeta: metaPatch }
-              : undefined,
-          );
+          this.persistCurrentUnit('Mantenimiento agregado.', { fleetMeta: metaPatch }, {
+            onSuccess: () => this.postMaintenanceLedgerExpense(ledgerPayload),
+          });
         },
         error: () => {
           this.saving.set(false);
@@ -1329,6 +1479,17 @@ export class FleetUnitDetailDrawerFacade {
       });
   }
 
+  private postMaintenanceLedgerExpense(payload: ExpenseWritePayload | null): void {
+    if (!payload) {
+      return;
+    }
+    this.expensesApi
+      .postExpense(payload)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () => this.toast.show(FLEET_MAINTENANCE_LEDGER_ERROR, 'warning'),
+      });
+  }
 
   // -- Identificación: form signals --
   readonly editBrand = signal('');
@@ -1579,13 +1740,18 @@ export class FleetUnitDetailDrawerFacade {
     this.syncUnitDocuments('ownership', kept, files, original)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: () => {
+        next: (uploaded) => {
           this.metaOverride.update((prev) => ({ ...prev, ...fleetMetaDraft }));
           this.editOwnershipNewFiles.set([]);
           this.saving.set(false);
-          this.persistCurrentUnit('Propiedad y tenencia actualizadas.', {
-            fleetMeta: fleetMetaDraft,
-          });
+          this.persistCurrentUnit(
+            'Propiedad y tenencia actualizadas.',
+            { fleetMeta: fleetMetaDraft },
+            {
+              ...TENURE_SECTION_PERSIST_OPTIONS,
+              syncedDocuments: { kind: 'ownership', kept, uploaded },
+            },
+          );
         },
         error: () => {
           this.saving.set(false);
@@ -1850,7 +2016,11 @@ export class FleetUnitDetailDrawerFacade {
   }
 
   insNext(): string {
-    return nextInsuranceTableDate(this.meta()) ?? '—';
+    return coverageNextPaymentLabel(
+      this.insurancePaymentSchedule(),
+      formatFleetYmdMx,
+      nextInsuranceTableDate(this.meta()) ?? '—',
+    );
   }
 
   canConfirmInsurancePayment(): boolean {
@@ -1889,7 +2059,10 @@ export class FleetUnitDetailDrawerFacade {
       missingExpenseMessage:
         'No se encontró el gasto asociado. Edita la cobertura para regenerar.',
       setSaving: (saving) => this.saving.set(saving),
-      onSuccess: () => this.reloadInsurancePaymentExpenses(),
+      onSuccess: () => {
+        this.reloadInsurancePaymentExpenses();
+        this.fleetFeature.refreshCoverageExpenses();
+      },
     });
   }
 
@@ -1946,7 +2119,11 @@ export class FleetUnitDetailDrawerFacade {
   }
 
   gpsNext(): string {
-    return nextGpsTableDate(this.meta()) ?? '—';
+    return coverageNextPaymentLabel(
+      this.gpsPaymentSchedule(),
+      formatFleetYmdMx,
+      nextGpsTableDate(this.meta()) ?? '—',
+    );
   }
 
   canConfirmGpsPayment(): boolean {
@@ -2167,7 +2344,7 @@ export class FleetUnitDetailDrawerFacade {
     kept: readonly FleetStoredDocument[],
     newFiles: readonly File[],
     original: readonly FleetStoredDocument[],
-  ): Observable<unknown> {
+  ): Observable<FleetStoredDocument[]> {
     const unitId = this.effUnit().id;
     const keptIds = new Set(kept.filter((d) => d.id > 0).map((d) => d.id));
     const deletes = original
@@ -2176,8 +2353,13 @@ export class FleetUnitDetailDrawerFacade {
     const uploads = newFiles.map((file) =>
       this.unitsApi.uploadUnitDocument(unitId, kind, file),
     );
-    const ops = [...deletes, ...uploads];
-    return ops.length === 0 ? of(null) : forkJoin(ops);
+    if (deletes.length === 0 && uploads.length === 0) {
+      return of([]);
+    }
+    return forkJoin({
+      deleted: deletes.length > 0 ? forkJoin(deletes) : of([]),
+      uploaded: uploads.length > 0 ? forkJoin(uploads) : of([] as FleetStoredDocument[]),
+    }).pipe(map((result) => result.uploaded));
   }
 
   doubleArticLabel(m: UnitFleetMeta | undefined): string {
@@ -2210,11 +2392,11 @@ export class FleetUnitDetailDrawerFacade {
   }
 
   insRenewalBucket(): FleetRenewalBucket {
-    return fleetInsuranceRenewal(this.meta());
+    return fleetInsuranceRenewal(this.meta(), this.insurancePaymentExpenses());
   }
 
   gpsRenewalBucket(): FleetRenewalBucket {
-    return fleetGpsRenewal(this.meta());
+    return fleetGpsRenewal(this.meta(), this.gpsPaymentExpenses());
   }
 
   constructor() {
@@ -2275,7 +2457,7 @@ export class FleetUnitDetailDrawerFacade {
       const id = current.id;
       if (priorUnitId !== '' && priorUnitId !== id) {
         this.resetOnUnitIdentityChange();
-        this.cancelVerifEntry();
+        this.verifClearConfirmScope.set(null);
         this.addingMaint.set(false);
         this.resetNewMaintForm();
         this.detailTab.set('mant');

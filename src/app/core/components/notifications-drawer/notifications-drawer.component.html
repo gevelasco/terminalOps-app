@@ -46,18 +46,32 @@
         </button>
       }
     </div>
+    <div class="notifications-drawer__search">
+      <to-input
+        type="search"
+        prefixIcon="search"
+        ariaLabel="Buscar notificaciones"
+        placeholder="Título, unidad, operador…"
+        [value]="facade.searchQuery()"
+        (valueChange)="facade.searchQuery.set($event)"
+      />
+    </div>
   </div>
 
   <div class="notifications-drawer__scroll">
     @if (facade.error(); as errorMessage) {
       <p class="notifications-drawer__empty">{{ errorMessage }}</p>
-    } @else if (facade.items().length === 0 && !facade.loading()) {
+    } @else if (facade.visibleItems().length === 0 && !facade.loading()) {
       <p class="notifications-drawer__empty">
-        No hay notificaciones para este periodo.
+        @if (facade.hasSearchQuery() && facade.items().length > 0) {
+          Ningún resultado para esta búsqueda.
+        } @else {
+          No hay notificaciones para este periodo.
+        }
       </p>
     } @else {
       <ul class="notifications-drawer__list" aria-label="Lista de notificaciones">
-        @for (item of facade.items(); track item.id) {
+        @for (item of facade.visibleItems(); track item.id) {
           <li
             class="notifications-drawer__item"
             [class.notifications-drawer__item--danger]="item.tone === 'danger'"

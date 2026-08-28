@@ -1,4 +1,5 @@
 import type { FleetOverviewItemDto } from '@shared/models/api/fleet-overview.model';
+import type { Expense, Unit } from '@shared/models/logistics.models';
 import {
   attachOverviewCompliance,
   overviewCardEntryFromDto,
@@ -118,6 +119,60 @@ describe('attachOverviewCompliance', () => {
     expect(withCompliance.compliance?.verifBucket).toBe('soon');
     expect(withCompliance.compliance?.insLabel).toBe('Vencido');
     expect(withCompliance.compliance?.verifLabel).toBe('Próximo');
+  });
+
+  it('prefers the insurance ledger over a stale lastPaymentDate', () => {
+    const entry = overviewCardEntryFromDto(
+      unitItem({
+        unitId: 98,
+        hitchedEquipment: [],
+        maintenance: {
+          insuranceRenewal: 'due',
+        },
+      }),
+    );
+    const unit: Unit = {
+      id: '98',
+      plate: '98BL2L',
+      capacityKg: 0,
+      status: 'available',
+      fleetMeta: {
+        insurancePolicyNumber: '0005323322',
+        insuranceContractDate: '2026-01-24',
+        insuranceLastPaymentDate: '2026-01-24',
+        insurancePaymentCadence: 'Mensual',
+        insuranceCost: 6824.41,
+      },
+    };
+    const expenses: Expense[] = [
+      {
+        id: 'e8',
+        tripId: '',
+        category: 'Qualitas',
+        amount: 6824.41,
+        currency: 'MXN',
+        incurredAt: '2026-08-24T12:00:00.000Z',
+        kind: 'insurance',
+        description: 'Pago de póliza · 0005323322 (Mensualidad 8/12)',
+        relatedUnitId: '98',
+        paidAt: '2026-08-28T18:00:00.000Z',
+      },
+      {
+        id: 'e9',
+        tripId: '',
+        category: 'Qualitas',
+        amount: 6824.41,
+        currency: 'MXN',
+        incurredAt: '2099-01-24T12:00:00.000Z',
+        kind: 'insurance',
+        description: 'Pago de póliza · 0005323322 (Mensualidad 9/12)',
+        relatedUnitId: '98',
+        paidAt: null,
+      },
+    ];
+    const withCompliance = attachOverviewCompliance(entry, [unit], [], expenses);
+    expect(withCompliance.compliance?.insBucket).toBe('ok');
+    expect(withCompliance.compliance?.insLabel).toBe('Al día');
   });
 });
 

@@ -216,7 +216,7 @@ export function fleetComplianceIconsForUnit(
   pushIcon(
     items,
     'verification',
-    fleetVerificationRenewal(meta),
+    fleetVerificationRenewal(meta, unit?.trailerYear),
     daysUntilUnitVerificationRenewal(meta),
   );
   pushIcon(

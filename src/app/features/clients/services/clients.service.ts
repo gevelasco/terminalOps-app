@@ -24,6 +24,7 @@ export class ClientsFeatureService {
   private readonly _clients = signal<readonly Client[]>([]);
   private readonly _selectedClientId = signal<string | null>(null);
   private readonly _detailLoading = signal(false);
+  private readonly _pendingDrawerTab = signal<'details' | 'balance' | null>(null);
 
   private disposed = false;
   private detailSub: Subscription | null = null;
@@ -34,6 +35,7 @@ export class ClientsFeatureService {
 
   readonly clients = this._clients.asReadonly();
   readonly selectedClientId = this._selectedClientId.asReadonly();
+  readonly pendingDrawerTab = this._pendingDrawerTab.asReadonly();
   readonly selectedClient = computed(() => {
     const id = this._selectedClientId();
     if (!id) {
@@ -74,11 +76,20 @@ export class ClientsFeatureService {
     this.hydrateSelectedDetail(id);
   }
 
+  requestDrawerTab(tab: 'details' | 'balance'): void {
+    this._pendingDrawerTab.set(tab);
+  }
+
+  clearPendingDrawerTab(): void {
+    this._pendingDrawerTab.set(null);
+  }
+
   clearSelection(): void {
     this.detailSub?.unsubscribe();
     this.detailSub = null;
     this._detailLoading.set(false);
     this._selectedClientId.set(null);
+    this._pendingDrawerTab.set(null);
   }
 
   replaceClient(updated: Client): void {
@@ -178,5 +189,6 @@ export class ClientsFeatureService {
     this._clients.set([]);
     this._selectedClientId.set(null);
     this._detailLoading.set(false);
+    this._pendingDrawerTab.set(null);
   }
 }
