@@ -215,7 +215,10 @@
       <to-input
         label="Carga"
         type="datetime-local"
+        [min]="loadDateMin()"
+        [max]="loadDateMax()"
         [(value)]="loadDate"
+        (blurNotify)="onLoadDateBlur()"
       />
       <to-fleet-brand-combobox
         label="Lugar de carga"
@@ -328,10 +331,12 @@
     </h3>
     <to-operator-input
       label="Nombre del operador *"
-      placeholder="Buscar operador disponible…"
+      [placeholder]="operatorPlaceholder()"
+      [emptyMessage]="operatorPickerEmptyMessage()"
       [prefetchMode]="true"
       [operatorsData]="pickerOperators()"
       [tripsData]="pickerActiveTrips()"
+      [ignoreCurrentAvailability]="historicalAssignment()"
       [dataLoading]="catalog.operatorsLoading()"
       [(operatorId)]="assignedOperatorId"
       (focusNotify)="onOperatorInputFocus()"
@@ -354,10 +359,11 @@
     <div class="maniobra-drawer__unit-field">
       <to-unit-input
         label="Unidad *"
-        [placeholder]="unitPlaceholder"
+        [placeholder]="unitPlaceholder()"
         [prefetchMode]="true"
         [unitsData]="pickerUnits()"
         [tripsData]="pickerActiveTrips()"
+        [ignoreCurrentAvailability]="historicalAssignment()"
         [dataLoading]="catalog.fleetLoading()"
         [emptyMessage]="unitPickerEmptyMessage()"
         [(unitId)]="unitId"

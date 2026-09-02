@@ -35,7 +35,10 @@ import type { CreateTripPayload } from '@shared/models/api/api-trips.model';
 import { trackFileEntry } from '@features/fleet/utils/list-trackers';
 import { dateTimeLocalValueToIso } from '@features/trips/utils/datetime-local';
 import {
+  dateTimeLocalDay,
+  isHistoricalManeuverAssignment,
   isPlannedScheduleValid,
+  loadDateDepartureIssue,
   plannedScheduleArrivalOrderIssue,
   plannedScheduleCompletionDepartureOrderIssue,
   plannedScheduleCompletionOrderIssue,
@@ -322,8 +325,19 @@ export class TripsNewDrawerComponent {
   /** Maniobras activas ya cargadas en la página (disponibilidad operador/unidad). */
   readonly activeTrips = input<readonly Trip[]>([]);
 
+  /** Cerrada en días anteriores: no filtrar por quién está en viaje ahora. */
+  readonly historicalAssignment = computed(() =>
+    isHistoricalManeuverAssignment(this.plannedDepartureDateTime(), {
+      arrivalLocal: this.plannedArrivalDateTime(),
+      completionLocal: this.plannedCompletionDateTime(),
+    }),
+  );
+  private assignmentWasHistorical = false;
+
   /** Copia mutable para pickers (`to-operator-input` / `to-unit-input`). */
-  readonly pickerActiveTrips = computed(() => [...this.activeTrips()]);
+  readonly pickerActiveTrips = computed(() =>
+    this.historicalAssignment() ? [] : [...this.activeTrips()],
+  );
 
   /** Copias mutables para inputs con `prefetchMode` (evita NG4 readonly→mutable). */
   readonly pickerClients = computed((): Client[] => [...this.catalog.clients()]);
@@ -348,10 +362,18 @@ export class TripsNewDrawerComponent {
       }),
     );
   });
-  readonly unitPickerEmptyMessage = computed(() =>
-    this.applyUnitAssignmentFilter()
-      ? 'No hay unidades compatibles con esta configuración y contenedor.'
-      : 'No hay unidades disponibles (en maniobra o no activas).',
+  readonly unitPickerEmptyMessage = computed(() => {
+    if (this.applyUnitAssignmentFilter()) {
+      return 'No hay unidades compatibles con esta configuración y contenedor.';
+    }
+    return this.historicalAssignment()
+      ? 'No hay unidades activas.'
+      : 'No hay unidades disponibles (en maniobra o no activas).';
+  });
+  readonly operatorPickerEmptyMessage = computed(() =>
+    this.historicalAssignment()
+      ? 'No hay operadores activos.'
+      : 'No hay operadores disponibles (en maniobra o no activos).',
   );
 
   readonly selectedUnit = computed(() => {
@@ -499,6 +521,18 @@ export class TripsNewDrawerComponent {
   readonly plannedArrivalDateTime = model('');
   readonly plannedCompletionDateTime = model('');
 
+  readonly loadDateBoundDay = computed(() =>
+    dateTimeLocalDay(this.plannedDepartureDateTime()),
+  );
+  readonly loadDateMin = computed(() => {
+    const day = this.loadDateBoundDay();
+    return day ? `${day}T00:00` : undefined;
+  });
+  readonly loadDateMax = computed(() => {
+    const day = this.loadDateBoundDay();
+    return day ? `${day}T23:59` : undefined;
+  });
+
   readonly plannedScheduleValid = computed(() =>
     isPlannedScheduleValid(
       this.plannedDepartureDateTime(),
@@ -575,7 +609,16 @@ export class TripsNewDrawerComponent {
 
   readonly paymentMethodOptions: ToSelectOption[] = TRIP_CLIENT_PAYMENT_METHOD_OPTIONS;
 
-  readonly unitPlaceholder = 'Buscar unidad disponible…';
+  readonly unitPlaceholder = computed(() =>
+    this.historicalAssignment()
+      ? 'Buscar unidad…'
+      : 'Buscar unidad disponible…',
+  );
+  readonly operatorPlaceholder = computed(() =>
+    this.historicalAssignment()
+      ? 'Buscar operador…'
+      : 'Buscar operador disponible…',
+  );
 
   readonly creating = signal(false);
   /** Solo lo esencial bloquea el drawer: centros operativos (prefill de origen). */
@@ -737,6 +780,20 @@ export class TripsNewDrawerComponent {
       if (this.clientName().trim().length >= 3) {
         this.catalog.ensureClientsLoaded();
       }
+    });
+
+    effect(() => {
+      const historical = this.historicalAssignment();
+      const available = !historical;
+      if (this.assignmentWasHistorical && !historical) {
+        this.clearAssignmentForLiveSchedule();
+      }
+      this.assignmentWasHistorical = historical;
+      this.catalog.syncLoadedUnitsFilter({
+        ...(this.currentUnitAssignmentQuery() ?? {}),
+        available,
+      });
+      this.catalog.syncLoadedOperators({ available });
     });
 
     // Configuraciones de operación al elegir cliente (sugerencias por tipo de maniobra).
@@ -1733,7 +1790,7 @@ export class TripsNewDrawerComponent {
 
   /** Carga perezosa: unidades (y configs, la compatibilidad depende de ellas). */
   onUnitInputFocus(): void {
-    this.catalog.reloadUnits(this.currentUnitAssignmentQuery());
+    this.catalog.reloadUnits(this.currentUnitCatalogQuery());
     this.operationConfigsFeature.loadOperationConfigurations();
   }
 
@@ -1749,10 +1806,7 @@ export class TripsNewDrawerComponent {
 
   private onManeuverSpecChanged(): void {
     this.applyUnitAssignmentFilter.set(true);
-    this.catalog.syncLoadedUnitsFilter({
-      operationType: this.operationType(),
-      containerType: this.containerType(),
-    });
+    this.catalog.syncLoadedUnitsFilter(this.currentUnitCatalogQuery());
   }
 
   private currentUnitAssignmentQuery():
@@ -1767,8 +1821,36 @@ export class TripsNewDrawerComponent {
     };
   }
 
+  private currentUnitCatalogQuery(): {
+    operationType?: string;
+    containerType?: string;
+    available: boolean;
+  } {
+    return {
+      ...(this.currentUnitAssignmentQuery() ?? {}),
+      available: !this.historicalAssignment(),
+    };
+  }
+
   onOperatorInputFocus(): void {
-    this.catalog.ensureOperatorsLoaded();
+    this.catalog.reloadOperators({ available: !this.historicalAssignment() });
+  }
+
+  private clearAssignmentForLiveSchedule(): void {
+    const hadUnit = Boolean(this.unitId().trim());
+    const hadOperator = Boolean(this.assignedOperatorId().trim());
+    if (!hadUnit && !hadOperator) {
+      return;
+    }
+    this.assignedOperatorId.set('');
+    this.unitId.set('');
+    this.pickedUnit.set(null);
+    this.equipmentPrimary.set('');
+    this.equipmentSecondary.set('');
+    this.toast.show(
+      'Las fechas ya pueden llegar hoy: vuelve a elegir unidad y operador disponibles.',
+      'warning',
+    );
   }
 
   onOperationConfigFocus(): void {
@@ -1849,6 +1931,35 @@ export class TripsNewDrawerComponent {
       this.plannedScheduleSuggestionUi.set('manual');
       this.lastAutoPlannedArrival = '';
       this.lastAutoPlannedCompletion = '';
+    }
+  }
+
+  private sanitizeLoadDateAfterDepartureChange(): void {
+    const load = this.loadDate().trim();
+    const dep = this.plannedDepartureDateTime().trim();
+    const issue = loadDateDepartureIssue(load, dep);
+    if (!issue) {
+      return;
+    }
+    this.loadDate.set('');
+    this.toast.show(issue, 'warning');
+  }
+
+  onLoadDateBlur(): void {
+    const load = this.loadDate().trim();
+    if (!load) {
+      return;
+    }
+    const dep = this.plannedDepartureDateTime().trim();
+    if (!dep) {
+      this.toast.show('Indica primero la fecha y hora de salida.', 'warning');
+      this.loadDate.set('');
+      return;
+    }
+    const issue = loadDateDepartureIssue(load, dep);
+    if (issue) {
+      this.toast.show(issue, 'warning');
+      this.loadDate.set('');
     }
   }
 
@@ -1936,6 +2047,7 @@ export class TripsNewDrawerComponent {
       this.tryApplyPlannedScheduleFromMatchedRate();
     }
     this.sanitizePlannedScheduleAfterDepartureChange();
+    this.sanitizeLoadDateAfterDepartureChange();
     this.maybeToastPlannedScheduleOrder();
   }
 

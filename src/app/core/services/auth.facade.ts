@@ -3,6 +3,7 @@ import { jwtDecode } from 'jwt-decode';
 import { map, Observable, tap } from 'rxjs';
 import type { AuthUser, LoginResponse, SignUpRequest } from '@shared/models/auth.models';
 import { normalizeApiIsoDate } from '@core/utils/api-date';
+import { normalizeOpenChecklistCount } from '@core/utils/checklist-badge.util';
 import { resolveAllowedModules } from '@shared/utils/access-control';
 import { AuthService } from './api/auth';
 import { LogoutService } from './logout.service';
@@ -154,6 +155,9 @@ export class AuthFacade {
         user.operationalCenterLatitude ?? payload.operationalCenterLatitude,
       operationalCenterLongitude:
         user.operationalCenterLongitude ?? payload.operationalCenterLongitude,
+      openChecklistCount: normalizeOpenChecklistCount(
+        user.openChecklistCount ?? payload.openChecklistCount,
+      ),
     };
 
     this.session.setSession(response.access_token, response.refresh_token, merged);

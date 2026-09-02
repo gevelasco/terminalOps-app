@@ -3,11 +3,12 @@ import {
   fleetOperationalKeyLabel,
   fleetOperationalPillClass,
   nextInsuranceTableDate,
-  nextMaintenanceTableDate,
+  nextMaintenanceTableLabel,
   nextVerificationTableDate,
   type FleetOperationalKey,
   type FleetRenewalBucket,
 } from '@features/fleet/utils/fleet-unit-table-row';
+import type { CompanyMaintenancePolicy } from '@shared/models/company-operational-settings.models';
 import type { Trip, Unit } from '@shared/models/logistics.models';
 import { resourceIdKey, resourceIdsEqual } from '@shared/utils/resource-id';
 
@@ -77,12 +78,18 @@ export function fleetOverviewLastMaintenanceLabel(unit: Unit): string {
   }).format(d);
 }
 
-export function fleetOverviewNextMaintenanceLabel(unit: Unit): string {
-  return nextMaintenanceTableDate(unit.fleetMeta) ?? '—';
+export function fleetOverviewNextMaintenanceLabel(
+  unit: Unit,
+  policy?: CompanyMaintenancePolicy,
+): string {
+  return nextMaintenanceTableLabel(unit.fleetMeta, policy) ?? '—';
 }
 
-export function fleetOverviewKmSinceMaintenance(unit: Unit): string {
-  const rem = fleetMaintenanceKmRemaining(unit.fleetMeta);
+export function fleetOverviewKmSinceMaintenance(
+  unit: Unit,
+  policy?: CompanyMaintenancePolicy,
+): string {
+  const rem = fleetMaintenanceKmRemaining(unit.fleetMeta, policy);
   if (rem != null) {
     return `${Math.round(rem).toLocaleString('es-MX')} km restantes`;
   }

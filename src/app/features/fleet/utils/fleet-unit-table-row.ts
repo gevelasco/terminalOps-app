@@ -13,7 +13,10 @@ import {
   effectiveFleetMetaForMaintenance,
   resolveMaintenanceContext,
 } from '@shared/utils/fleet/company-maintenance-policy';
-import { fleetMaintenanceKmRemainingFromCounter } from '@features/fleet/utils/fleet-maintenance-km.util';
+import {
+  fleetMaintenanceKmRemainingFromCounter,
+  formatMaintenanceKmRemainingLabel,
+} from '@features/fleet/utils/fleet-maintenance-km.util';
 import { fleetUnitConvoyTableBadges } from '@app/features/fleet/utils/unit-hitched-equipment';
 import { tripStatusUiLabel } from '@shared/utils/trip-status-ui';
 import {
@@ -313,11 +316,11 @@ function maintenanceBucket(
   meta: (UnitFleetMeta | EquipmentFleetMeta) | undefined,
   policy?: CompanyMaintenancePolicy,
 ): FleetRenewalBucket {
-  const effective = policy
-    ? effectiveFleetMetaForMaintenance(meta, policy)
-    : meta;
-  if (policy?.kmControlEnabled) {
-    const rem = maintenanceKmRemainingFromMeta(effective, policy);
+  if (!policy) {
+    return 'na';
+  }
+  if (policy.kmControlEnabled) {
+    const rem = maintenanceKmRemainingFromMeta(meta, policy);
     if (rem == null) {
       return 'na';
     }
@@ -329,22 +332,10 @@ function maintenanceBucket(
     }
     return 'ok';
   }
-  if (effective?.maintenanceAlertByKm === true) {
-    const rem = maintenanceKmRemainingFromMeta(effective, policy);
-    if (rem == null) {
-      return 'na';
-    }
-    if (rem <= 0) {
-      return 'due';
-    }
-    if (rem <= 300) {
-      return 'soon';
-    }
-    return 'ok';
+  if (!policy.dateControlEnabled) {
+    return 'na';
   }
-  const months = policy
-    ? resolveMaintenanceContext(meta, policy).scheduleMonths
-    : MAINT_CYCLE_MO;
+  const months = resolveMaintenanceContext(meta, policy).scheduleMonths;
   return renewalBucket(meta?.lastMaintenanceDate, months);
 }
 
@@ -527,8 +518,6 @@ export function formatFleetYmdMx(iso: string | undefined): string {
 }
 
 const VERIF_CYCLE_MO = 6;
-const MAINT_CYCLE_MO = 6;
-
 function nextCycleDate(iso: string | undefined, cycleMonths: number): Date | null {
   const raw = iso?.trim();
   if (!raw) {
@@ -552,28 +541,51 @@ function formatYmdFromDate(d: Date): string {
   return `${y}-${mo}-${da}`;
 }
 
-/** Fecha ISO del próximo mantenimiento por tiempo (último servicio + ciclo de empresa). */
+function usesDateMaintenancePolicy(
+  policy?: CompanyMaintenancePolicy,
+): policy is CompanyMaintenancePolicy {
+  return Boolean(policy?.dateControlEnabled && !policy.kmControlEnabled);
+}
+
+/** Fecha ISO del próximo mantenimiento por calendario. Null si la política es por km o no hay fechas. */
 export function nextMaintenanceDueIso(
   meta: FleetLastMaintenanceMeta | undefined,
   policy?: CompanyMaintenancePolicy,
 ): string | null {
-  const months = policy
-    ? resolveMaintenanceContext(meta, policy).scheduleMonths
-    : MAINT_CYCLE_MO;
+  if (!usesDateMaintenancePolicy(policy)) {
+    return null;
+  }
+  const months = resolveMaintenanceContext(meta, policy).scheduleMonths;
   const d = nextCycleDate(meta?.lastMaintenanceDate, months);
   return d ? formatYmdFromDate(d) : null;
 }
 
-/** Fecha próxima (solo etiqueta localizada) para celda de tabla: mantenimiento. */
+/** Fecha próxima (solo si la empresa controla mantenimiento por calendario). */
 export function nextMaintenanceTableDate(
   meta: FleetLastMaintenanceMeta | undefined,
   policy?: CompanyMaintenancePolicy,
 ): string | null {
-  const months = policy
-    ? resolveMaintenanceContext(meta, policy).scheduleMonths
-    : MAINT_CYCLE_MO;
+  if (!usesDateMaintenancePolicy(policy)) {
+    return null;
+  }
+  const months = resolveMaintenanceContext(meta, policy).scheduleMonths;
   const d = nextCycleDate(meta?.lastMaintenanceDate, months);
   return d ? fmtMx(d) : null;
+}
+
+/** Texto bajo el icono: km restantes, o próxima fecha. Nunca ambas. */
+export function nextMaintenanceTableLabel(
+  meta: (UnitFleetMeta | EquipmentFleetMeta) | undefined,
+  policy?: CompanyMaintenancePolicy,
+): string | null {
+  if (policy?.kmControlEnabled) {
+    const rem = fleetMaintenanceKmRemaining(meta, policy);
+    if (rem == null) {
+      return null;
+    }
+    return formatMaintenanceKmRemainingLabel(rem);
+  }
+  return nextMaintenanceTableDate(meta, policy);
 }
 
 /** La verificación que venza antes (misma cadencia 6 meses que el icono). */
@@ -699,11 +711,13 @@ export function buildFleetUnitTableRow(
     hitchedEquipment?: Equipment[];
     insuranceExpenses?: readonly Expense[];
     today?: Date;
+    policy?: CompanyMaintenancePolicy;
   },
 ): Record<string, unknown> {
   const meta = u.fleetMeta;
   const hitched = options.hitchedEquipment ?? [];
   const insuranceExpenses = options.insuranceExpenses;
+  const policy = options.policy;
   return {
     id: u.id,
     fleetBrand: trailerBrandLabel(u),
@@ -712,10 +726,10 @@ export function buildFleetUnitTableRow(
     fleetConfigBadges: fleetUnitConvoyTableBadges(hitched, u.transportType),
     fleetOperational:
       options.operationalOverride ?? operationalKey(u, options.onRoute),
-    fleetMaint: maintenanceBucket(meta),
+    fleetMaint: maintenanceBucket(meta, policy),
     fleetVerif: verificationBucket(meta, u.trailerYear),
     fleetIns: insuranceBucket(meta, insuranceExpenses, options.today),
-    fleetMaintNext: nextMaintenanceTableDate(meta),
+    fleetMaintNext: nextMaintenanceTableLabel(meta, policy),
     fleetVerifNext: nextVerificationTableDate(meta),
     fleetInsNext: nextInsuranceTableDate(meta, insuranceExpenses),
   };
@@ -779,13 +793,16 @@ export function buildFleetEquipmentTableRow(
     operationalOverride?: FleetOperationalKey;
     insuranceExpenses?: readonly Expense[];
     today?: Date;
+    policy?: CompanyMaintenancePolicy;
+    /** Meta del tracto asignado: el km de mantenimiento se cuenta ahí, no en el equipo. */
+    maintenanceKmMeta?: UnitFleetMeta;
   },
 ): Record<string, unknown> {
   const meta = e.fleetMeta;
-  const rowMaintMeta = meta;
-  const maintMeta: FleetLastMaintenanceMeta | undefined = rowMaintMeta
-    ? { lastMaintenanceDate: rowMaintMeta.lastMaintenanceDate }
-    : undefined;
+  const policy = options.policy;
+  const maintCalcMeta = policy?.kmControlEnabled
+    ? (options.maintenanceKmMeta ?? meta)
+    : meta;
   const insMeta: FleetInsuranceRenewalMeta | undefined = meta
     ? {
         insurancePolicyNumber: meta.insurancePolicyNumber,
@@ -806,10 +823,10 @@ export function buildFleetEquipmentTableRow(
     fleetOperational:
       options.operationalOverride ??
       operationalKeyEquipment(e, options.onRoute),
-    fleetMaint: maintenanceBucket(rowMaintMeta),
+    fleetMaint: maintenanceBucket(maintCalcMeta, policy),
     fleetVerif: equipmentPhysMechVerificationBucket(e, meta),
     fleetIns: insuranceBucket(insMeta, insuranceExpenses, options.today),
-    fleetMaintNext: nextMaintenanceTableDate(maintMeta),
+    fleetMaintNext: nextMaintenanceTableLabel(maintCalcMeta, policy),
     fleetVerifNext: nextEquipmentPhysMechTableDate(e, meta),
     fleetInsNext: nextInsuranceTableDate(insMeta, insuranceExpenses),
   };

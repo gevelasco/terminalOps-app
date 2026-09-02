@@ -9,8 +9,47 @@ import type {
 import { SessionService } from '../state/session';
 import { companyResourceUrl, requireCompanyId, resourceByIdUrl } from './api-url';
 
+/**
+ * Campos que el API deriva o denormaliza en lecturas.
+ * Enviarlos en POST/PATCH dispara 400 (`property X should not exist`).
+ */
+type ExpenseReadOnlyField =
+  | 'id'
+  | 'documents'
+  | 'maintenanceTarget'
+  | 'insuranceTarget'
+  | 'fleetRelationLabel'
+  | 'relatedUnitLabel'
+  | 'relatedEquipmentLabel'
+  | 'relatedOperatorLabel'
+  | 'tripManeuverCode'
+  | 'incurredDate'
+  | 'isOperationalProvision';
+
+const EXPENSE_READ_ONLY_FIELDS: readonly ExpenseReadOnlyField[] = [
+  'id',
+  'documents',
+  'maintenanceTarget',
+  'insuranceTarget',
+  'fleetRelationLabel',
+  'relatedUnitLabel',
+  'relatedEquipmentLabel',
+  'relatedOperatorLabel',
+  'tripManeuverCode',
+  'incurredDate',
+  'isOperationalProvision',
+];
+
 /** Payload de alta/edición: binarios van por POST …/documents, no en este JSON. */
-export type ExpenseWritePayload = Omit<Expense, 'id' | 'documents'>;
+export type ExpenseWritePayload = Omit<Expense, ExpenseReadOnlyField>;
+
+function omitExpenseReadOnlyFields<T extends object>(payload: T): T {
+  const next = { ...payload } as T & Record<string, unknown>;
+  for (const key of EXPENSE_READ_ONLY_FIELDS) {
+    delete next[key];
+  }
+  return next;
+}
 
 export interface ExpensesListParams {
   from?: string;
@@ -319,20 +358,22 @@ export class ExpensesService {
 
   postExpense(payload: ExpenseWritePayload): Observable<Expense> {
     const companyId = requireCompanyId(this.session.companyId());
+    const body = omitExpenseReadOnlyFields(payload);
     return this.http
       .post<Expense>(companyResourceUrl(companyId, 'expenses'), {
-        ...payload,
-        incurredAt: payload.incurredAt,
+        ...body,
+        incurredAt: body.incurredAt,
       })
       .pipe(map((e) => mapApiExpenseRow(e)));
   }
 
   patchExpense(id: string, payload: Partial<ExpenseWritePayload>): Observable<Expense> {
     const expenseId = id.trim();
+    const body = omitExpenseReadOnlyFields(payload);
     return this.http
       .patch<Expense>(resourceByIdUrl('expenses', expenseId), {
-        ...payload,
-        ...(payload.incurredAt != null ? { incurredAt: payload.incurredAt } : {}),
+        ...body,
+        ...(body.incurredAt != null ? { incurredAt: body.incurredAt } : {}),
       })
       .pipe(map((e) => mapApiExpenseRow(e)));
   }

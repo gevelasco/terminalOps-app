@@ -30,6 +30,10 @@ import {
   sameScheduleInstant,
 } from '@features/trips/utils/datetime-local';
 import {
+  dateTimeLocalDay,
+  loadDateDepartureIssue,
+} from '@features/trips/utils/planned-schedule-validation';
+import {
   rememberEmptyDeliveryOriginalAt,
   resolveEmptyDeliveryOriginalAt,
 } from '@features/trips/utils/empty-delivery-original.util';
@@ -186,6 +190,14 @@ export class TripsDetailDrawerFacade {
   private readonly emptyDeliveryOriginalAt = signal<string | null>(null);
   readonly loadDateDraft = signal('');
   readonly loadPlaceDraft = signal('');
+  readonly loadDateMin = computed(() => {
+    const day = dateTimeLocalDay(this.realDepartureDraft());
+    return day ? `${day}T00:00` : undefined;
+  });
+  readonly loadDateMax = computed(() => {
+    const day = dateTimeLocalDay(this.realDepartureDraft());
+    return day ? `${day}T23:59` : undefined;
+  });
   readonly detailTab = signal<TripsDetailTab>('maneuver');
   // Lectura nullable: estos computed corren desde effects que pueden evaluarse
   // justo después de limpiar la selección (p. ej. al eliminar la maniobra).
@@ -674,6 +686,15 @@ export class TripsDetailDrawerFacade {
         'Las fechas deben respetar el orden: salida, cita cliente y llegada origen.',
         'warning',
       );
+      return;
+    }
+
+    const loadDateIssue = loadDateDepartureIssue(
+      this.loadDateDraft(),
+      this.realDepartureDraft(),
+    );
+    if (loadDateIssue) {
+      this.toast.show(loadDateIssue, 'warning');
       return;
     }
 

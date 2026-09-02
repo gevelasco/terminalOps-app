@@ -21,6 +21,13 @@ import {
   countManeuversByDestinationStateBreakdown,
   formatStateDestinationTooltipHtml,
 } from '@features/trips/utils/trips-map-state-tooltip';
+import {
+  buildHighwayLineData,
+  buildPlaceLabelData,
+  hasMexicoHighways,
+  hasMexicoPlaces,
+  type MexicoHighwaysJson,
+} from '@features/trips/utils/trips-map-highways.util';
 
 export const TRIPS_MAP_GEO_NAME = 'mexico';
 
@@ -157,6 +164,7 @@ export function buildTripsMapEchartsOption(
   items: readonly TripMapItem[],
   geoJson?: MexicoStatesGeoJson | null,
   geometries?: TripMapRouteGeometryById,
+  highways?: MexicoHighwaysJson | null,
 ): EChartsOption {
   const { routes, origins, destinations } = buildTripsMapChartData(
     items,
@@ -282,8 +290,8 @@ export function buildTripsMapEchartsOption(
         fontSize: 10,
       },
       itemStyle: {
-        areaColor: 'rgba(241, 245, 249, 0.95)',
-        borderColor: 'rgba(71, 85, 105, 0.55)',
+        areaColor: 'rgba(241, 239, 233, 0.96)',
+        borderColor: 'rgba(100, 116, 139, 0.38)',
         borderWidth: 1,
       },
       regions: stateRegions,
@@ -292,8 +300,8 @@ export function buildTripsMapEchartsOption(
           show: false,
         },
         itemStyle: {
-          areaColor: 'rgba(148, 163, 184, 0.16)',
-          borderColor: 'rgba(100, 116, 139, 0.42)',
+          areaColor: 'rgba(234, 236, 228, 0.94)',
+          borderColor: 'rgba(100, 116, 139, 0.48)',
           borderWidth: 1.2,
           shadowBlur: 0,
           shadowColor: 'transparent',
@@ -301,6 +309,60 @@ export function buildTripsMapEchartsOption(
       },
     },
     series: [
+      ...(hasMexicoHighways(highways)
+        ? [
+            {
+              name: 'Carreteras',
+              type: 'lines' as const,
+              coordinateSystem: 'geo' as const,
+              polyline: true,
+              silent: true,
+              animation: false,
+              zlevel: 0,
+              z: 1,
+              lineStyle: {
+                color: 'rgba(100, 116, 139, 0.9)',
+                width: 0.8,
+                opacity: 0.42,
+                curveness: 0,
+                cap: 'round' as const,
+                join: 'round' as const,
+              },
+              emphasis: { disabled: true },
+              effect: { show: false },
+              data: buildHighwayLineData(highways),
+            },
+          ]
+        : []),
+      ...(hasMexicoPlaces(highways)
+        ? [
+            {
+              name: 'Ciudades',
+              type: 'scatter' as const,
+              coordinateSystem: 'geo' as const,
+              silent: true,
+              animation: false,
+              zlevel: 0,
+              z: 3,
+              symbol: 'circle',
+              itemStyle: {
+                color: 'rgba(71, 85, 105, 0.55)',
+                borderWidth: 0,
+              },
+              label: {
+                show: true,
+                formatter: '{b}',
+                position: 'right' as const,
+                distance: 4,
+                textBorderColor: 'rgba(248, 250, 252, 0.92)',
+                textBorderWidth: 2,
+              },
+              labelLayout: { hideOverlap: true },
+              emphasis: { disabled: true },
+              data: buildPlaceLabelData(highways),
+            },
+          ]
+        : []),
       {
         name: 'Rutas',
         type: 'lines',

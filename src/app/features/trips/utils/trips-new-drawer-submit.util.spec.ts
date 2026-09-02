@@ -153,6 +153,24 @@ describe('trips-new-drawer-submit.util', () => {
     }
   });
 
+  it('allows omitting the optional load date', () => {
+    const res = buildTripsNewDrawerSubmitResult(
+      baseSnap({ loadDate: '' }),
+      Date.parse('2026-07-01T00:00:00.000Z'),
+    );
+    expect(res.ok).toBe(true);
+  });
+
+  it('rejects a load date on a different day than departure', () => {
+    const res = buildTripsNewDrawerSubmitResult(
+      baseSnap({ loadDate: '2026-08-02T07:00' }),
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.message).toContain('posterior');
+    }
+  });
+
   it('requires both equipment ids for multi-equipment ops', () => {
     const res = buildTripsNewDrawerSubmitResult(
       baseSnap({

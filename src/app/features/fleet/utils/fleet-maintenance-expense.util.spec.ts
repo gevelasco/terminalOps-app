@@ -21,8 +21,6 @@ describe('buildFleetMaintenanceExpensePayload', () => {
       description: 'Cambio de aceite',
       paymentMethod: 'transfer',
       relatedUnitId: 'u-1',
-      relatedEquipmentId: undefined,
-      maintenanceTarget: 'unit',
       paidAt: '2026-03-13',
     });
   });
@@ -35,11 +33,18 @@ describe('buildFleetMaintenanceExpensePayload', () => {
       equipmentId: 'eq-9',
     });
 
-    expect(payload?.kind).toBe('maintenance');
-    expect(payload?.relatedEquipmentId).toBe('eq-9');
-    expect(payload?.relatedUnitId).toBeUndefined();
-    expect(payload?.maintenanceTarget).toBe('equipment');
-    expect(payload?.paidAt).toBe('2026-04-01');
+    expect(payload).toEqual({
+      tripId: '',
+      category: 'Medio servicio',
+      amount: 1200,
+      currency: 'MXN',
+      incurredAt: '2026-04-01',
+      kind: 'maintenance',
+      description: undefined,
+      paymentMethod: undefined,
+      relatedEquipmentId: 'eq-9',
+      paidAt: '2026-04-01',
+    });
   });
 
   it('uses tires kind for a unit tire change', () => {

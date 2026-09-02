@@ -109,10 +109,13 @@ export function companyMaintenancePolicyFromSession(input: {
     typeof kmDefault === 'number' && Number.isFinite(kmDefault) && kmDefault > 0
       ? kmDefault
       : null;
+  const kmControlEnabled =
+    input.maintenanceKmControlEnabled === true && kmInterval != null;
   return {
-    kmControlEnabled: input.maintenanceKmControlEnabled === true && kmInterval != null,
+    kmControlEnabled,
     kmIntervalDefault: kmInterval,
     dateControlEnabled:
+      !kmControlEnabled &&
       input.maintenanceDateControlEnabled === true &&
       input.maintenanceDatePeriodDefault != null,
     datePeriod: input.maintenanceDatePeriodDefault ?? null,

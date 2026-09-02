@@ -1,4 +1,4 @@
-import { Equipment, Unit } from '@shared/models/logistics.models';
+import { Equipment, Trip, Unit } from '@shared/models/logistics.models';
 import {
   buildManeuverAssignableUnitRows,
   unitMatchesManeuverAssignment,
@@ -98,6 +98,29 @@ describe('buildManeuverAssignableUnitRows', () => {
     const rows = buildManeuverAssignableUnitRows([volteo], []);
     expect(rows.length).toBe(1);
     expect(rows[0]!.displayLabel).toMatch(/Volteo$/);
+  });
+
+  it('excludes units already on an active trip unless the maneuver is historical', () => {
+    const busyUnit = unit({
+      id: 'u-busy',
+      status: 'in_use',
+      hitchedEquipment: [equipment({ id: 'e-busy', unitId: 'u-busy' })],
+    });
+    const activeTrip = {
+      id: 't1',
+      unitId: 'u-busy',
+      operatorId: 'op-1',
+      status: 'in_transit',
+    } as Trip;
+
+    expect(
+      buildManeuverAssignableUnitRows([busyUnit], [activeTrip]).map((r) => r.unit.id),
+    ).toEqual([]);
+    expect(
+      buildManeuverAssignableUnitRows([busyUnit], [activeTrip], {
+        ignoreCurrentAvailability: true,
+      }).map((r) => r.unit.id),
+    ).toEqual(['u-busy']);
   });
 });
 

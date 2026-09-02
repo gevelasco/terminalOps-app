@@ -24,3 +24,11 @@ export function formatMaintenanceKmCounterLabel(meta: UnitFleetMeta | undefined)
   const n = parseMaintenanceKmCounter(meta?.maintenanceKmCounter);
   return `${new Intl.NumberFormat('es-MX', { maximumFractionDigits: 0 }).format(n)} km`;
 }
+
+export function formatMaintenanceKmRemainingLabel(remaining: number): string {
+  return `${formatKmAmount(remaining)} km`;
+}
+
+function formatKmAmount(value: number): string {
+  return new Intl.NumberFormat('es-MX', { maximumFractionDigits: 0 }).format(value);
+}

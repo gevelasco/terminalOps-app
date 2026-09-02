@@ -14,7 +14,10 @@ import {
   normalizeMxPostalCodeDigits,
 } from '@features/trips/utils/mx-postal-settlement';
 import { maneuverKindFromRouteKm } from '@features/trips/utils/maniobra-route-display';
-import { plannedScheduleIsoTriplet } from '@features/trips/utils/planned-schedule-validation';
+import {
+  loadDateDepartureIssue,
+  plannedScheduleIsoTriplet,
+} from '@features/trips/utils/planned-schedule-validation';
 import {
   parseNonNegativeNumber,
   stripGroupedNumberInput,
@@ -256,6 +259,14 @@ export function buildTripsNewDrawerSubmitResult(
       message:
         'Completa salida, cita cliente y llegada origen en orden cronológico.',
     };
+  }
+
+  const loadDateIssue = loadDateDepartureIssue(
+    snap.loadDate,
+    snap.plannedDepartureDateTime,
+  );
+  if (loadDateIssue) {
+    return { ok: false, message: loadDateIssue };
   }
 
   const liters = parseRequiredNonNegative(snap.dieselLiters, 'Diesel (litros)');

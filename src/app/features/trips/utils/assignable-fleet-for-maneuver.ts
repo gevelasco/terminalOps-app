@@ -144,11 +144,18 @@ export function busyUnitIdsFromTrips(trips: readonly Trip[]): Set<string> {
   return busy;
 }
 
+export type ManeuverAssignableOptions = {
+  /** Maniobra histórica: no excluir quien hoy está en viaje. */
+  ignoreCurrentAvailability?: boolean;
+};
+
 export function buildManeuverAssignableUnitRows(
   units: readonly Unit[],
   trips: readonly Trip[],
+  options?: ManeuverAssignableOptions,
 ): ManeuverAssignableUnitRow[] {
-  const busy = busyUnitIdsFromTrips(trips);
+  const ignoreCurrent = options?.ignoreCurrentAvailability === true;
+  const busy = ignoreCurrent ? new Set<string>() : busyUnitIdsFromTrips(trips);
   return units
     .filter(
       (u) =>

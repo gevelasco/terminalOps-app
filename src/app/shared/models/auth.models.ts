@@ -57,6 +57,8 @@ export interface AuthUser {
   operationalCenterSettlementConsId?: string;
   operationalCenterLatitude?: number;
   operationalCenterLongitude?: number;
+  /** Tareas personales abiertas; llega en login/refresh, no se vuelve a pedir. */
+  openChecklistCount?: number;
 }
 
 export interface LoginRequest {
@@ -143,4 +145,6 @@ export interface SessionData {
   operationalCenterLongitude?: number;
   /** Plan comercial de la empresa (`basic` | `standard` | `pro` o alias legacy). */
   subscriptionPlanId?: string;
+  /** Tareas personales abiertas (login); se actualiza en local al editar el checklist. */
+  openChecklistCount?: number;
 }

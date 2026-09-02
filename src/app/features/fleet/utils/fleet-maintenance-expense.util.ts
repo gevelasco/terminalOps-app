@@ -1,6 +1,6 @@
 import { FLEET_MAINTENANCE_TYPE_OPTIONS } from '@shared/catalogs/fleet-form-options';
 import type { ExpenseWritePayload } from '@core/services/api/expenses';
-import type { ExpenseKind, ExpenseMaintenanceTarget } from '@shared/models/logistics.models';
+import type { ExpenseKind } from '@shared/models/logistics.models';
 
 export const FLEET_MAINTENANCE_LEDGER_ERROR =
   'El mantenimiento se guardó, pero no se pudo registrar el gasto en el ledger.';
@@ -54,7 +54,6 @@ export function buildFleetMaintenanceExpensePayload(
   const typeValue = input.typeValue?.trim() || catalogTypeValue(typeLabel) || '';
   const kind: ExpenseKind =
     typeValue === 'cambio_llantas' && unitId ? 'tires' : 'maintenance';
-  const maintenanceTarget: ExpenseMaintenanceTarget = unitId ? 'unit' : 'equipment';
 
   return {
     tripId: '',
@@ -65,9 +64,8 @@ export function buildFleetMaintenanceExpensePayload(
     kind,
     description: input.notes?.trim() || undefined,
     paymentMethod: input.paymentMethod?.trim() || undefined,
-    relatedUnitId: unitId,
-    relatedEquipmentId: equipmentId,
-    maintenanceTarget,
+    ...(unitId ? { relatedUnitId: unitId } : {}),
+    ...(equipmentId ? { relatedEquipmentId: equipmentId } : {}),
     paidAt: date,
   };
 }

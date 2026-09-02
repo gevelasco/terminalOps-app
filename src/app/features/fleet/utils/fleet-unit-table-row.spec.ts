@@ -1,8 +1,16 @@
 import type { Expense, Unit } from '@shared/models/logistics.models';
 import {
+  companyMaintenancePolicyFromSession,
+  type CompanyMaintenancePolicy,
+} from '@shared/models/company-operational-settings.models';
+import {
+  buildFleetEquipmentTableRow,
   buildFleetUnitTableRow,
   fleetInsuranceRenewal,
+  fleetMaintenanceRenewal,
   nextInsuranceTableDate,
+  nextMaintenanceTableDate,
+  nextMaintenanceTableLabel,
 } from './fleet-unit-table-row';
 
 const staleLastPaymentMeta = {
@@ -82,5 +90,104 @@ describe('fleet insurance renewal from ledger', () => {
     });
     expect(row['fleetIns']).toBe('ok');
     expect(String(row['fleetInsNext'])).toMatch(/24\s+sep/i);
+  });
+});
+
+describe('fleet maintenance policy exclusivity', () => {
+  const kmPolicy: CompanyMaintenancePolicy = {
+    kmControlEnabled: true,
+    kmIntervalDefault: 100_000,
+    dateControlEnabled: false,
+    datePeriod: null,
+  };
+  const datePolicy: CompanyMaintenancePolicy = {
+    kmControlEnabled: false,
+    kmIntervalDefault: null,
+    dateControlEnabled: true,
+    datePeriod: 'semiannual',
+  };
+  const meta = {
+    lastMaintenanceDate: '2026-03-13',
+    maintenanceKmCounter: 0,
+  };
+
+  it('does not invent a calendar due date when the company uses km', () => {
+    expect(nextMaintenanceTableDate(meta, kmPolicy)).toBeNull();
+    expect(nextMaintenanceTableLabel(meta, kmPolicy)).toBe('100,000 km');
+    expect(fleetMaintenanceRenewal(meta, kmPolicy)).toBe('ok');
+  });
+
+  it('uses the calendar cycle only when the company uses dates', () => {
+    expect(nextMaintenanceTableDate(meta, datePolicy)).toMatch(/13\s+sep/i);
+    expect(fleetMaintenanceRenewal(meta, datePolicy)).not.toBe('ok');
+  });
+
+  it('does not evaluate dates when no maintenance policy is set', () => {
+    expect(nextMaintenanceTableDate(meta)).toBeNull();
+    expect(fleetMaintenanceRenewal(meta)).toBe('na');
+  });
+
+  it('ignores leftover date settings when the session is km-only', () => {
+    const policy = companyMaintenancePolicyFromSession({
+      maintenanceKmControlEnabled: true,
+      maintenanceKmIntervalDefault: 100_000,
+      maintenanceDateControlEnabled: true,
+      maintenanceDatePeriodDefault: 'semiannual',
+    });
+    expect(policy.kmControlEnabled).toBe(true);
+    expect(policy.dateControlEnabled).toBe(false);
+    expect(nextMaintenanceTableDate(meta, policy)).toBeNull();
+    expect(nextMaintenanceTableLabel(meta, policy)).toBe('100,000 km');
+    expect(fleetMaintenanceRenewal(meta, policy)).toBe('ok');
+  });
+
+  it('builds unit rows with remaining km instead of a date', () => {
+    const unit: Unit = {
+      id: 'u-1',
+      plate: '98BL2L',
+      capacityKg: 0,
+      status: 'available',
+      name: 'FRE-2012-98BL2L',
+      fleetMeta: meta,
+    };
+    const row = buildFleetUnitTableRow(unit, { onRoute: false, policy: kmPolicy });
+    expect(row['fleetMaint']).toBe('ok');
+    expect(row['fleetMaintNext']).toBe('100,000 km');
+  });
+
+  it('uses the assigned tractor km for equipment when policy is km', () => {
+    const row = buildFleetEquipmentTableRow(
+      {
+        id: 'e-1',
+        name: 'Caja 1',
+        serialNumber: 'SN-1',
+        lastServiceDate: '2026-03-13',
+        type: 'caja_seca',
+        status: 'available',
+        unitId: 'u-1',
+        fleetMeta: { lastMaintenanceDate: '2026-03-13' },
+      },
+      {
+        onRoute: false,
+        policy: kmPolicy,
+        maintenanceKmMeta: { maintenanceKmCounter: 0 },
+      },
+    );
+    expect(row['fleetMaint']).toBe('ok');
+    expect(row['fleetMaintNext']).toBe('100,000 km');
+  });
+
+  it('shows remaining of interval after km have accumulated', () => {
+    const unit: Unit = {
+      id: 'u-1',
+      plate: '98BL2L',
+      capacityKg: 0,
+      status: 'available',
+      name: 'FRE-2012-98BL2L',
+      fleetMeta: { lastMaintenanceDate: '2026-03-13', maintenanceKmCounter: 25_000 },
+    };
+    const row = buildFleetUnitTableRow(unit, { onRoute: false, policy: kmPolicy });
+    expect(row['fleetMaint']).toBe('ok');
+    expect(row['fleetMaintNext']).toBe('75,000 km');
   });
 });

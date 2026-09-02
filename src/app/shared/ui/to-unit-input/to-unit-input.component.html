@@ -46,7 +46,13 @@
               tabindex="-1"
               (pointerdown)="onPickPointerDown(row, $event)"
             >
-              {{ row.displayLabel }}
+              <span [class]="unitStatusPillClass(row.unit)">
+                <span class="to-table-pill__dot" aria-hidden="true"></span>
+                <span class="to-table-pill__label">{{
+                  unitStatusPillLabel(row.unit)
+                }}</span>
+              </span>
+              <span class="to-unit-input__item-label">{{ row.displayLabel }}</span>
             </li>
           }
         } @else {

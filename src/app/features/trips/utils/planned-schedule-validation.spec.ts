@@ -1,4 +1,6 @@
 import {
+  isHistoricalManeuverAssignment,
+  loadDateDepartureIssue,
   isPlannedScheduleValid,
   plannedScheduleArrivalOrderIssue,
   plannedScheduleCompletionDepartureOrderIssue,
@@ -11,6 +13,43 @@ describe('planned-schedule-validation', () => {
   const dep = '2026-06-01T08:00';
   const arr = '2026-06-01T12:00';
   const fin = '2026-06-01T16:00';
+
+  it('treats a departure already in the past as historical assignment', () => {
+    const now = new Date('2026-09-01T20:00:00');
+    expect(isHistoricalManeuverAssignment('2026-08-31T08:00', now)).toBe(true);
+    expect(isHistoricalManeuverAssignment('2026-09-02T08:00', now)).toBe(false);
+    expect(isHistoricalManeuverAssignment('', now)).toBe(false);
+  });
+
+  it('is live when arrival or completion can still fall on today', () => {
+    const now = new Date('2026-09-01T20:00:00');
+    expect(
+      isHistoricalManeuverAssignment('2026-08-31T08:00', {
+        arrivalLocal: '2026-09-01T10:00',
+        completionLocal: '2026-09-01T18:00',
+        now,
+      }),
+    ).toBe(false);
+    expect(
+      isHistoricalManeuverAssignment('2026-08-30T08:00', {
+        arrivalLocal: '2026-08-30T12:00',
+        completionLocal: '2026-08-30T18:00',
+        now,
+      }),
+    ).toBe(true);
+  });
+
+  it('requires load date on the same calendar day as departure', () => {
+    expect(loadDateDepartureIssue('', '2026-08-01T08:00')).toBeNull();
+    expect(loadDateDepartureIssue('2026-08-01T06:00', '2026-08-01T08:00')).toBeNull();
+    expect(loadDateDepartureIssue('2026-08-01T08:00', '2026-08-01T08:00')).toBeNull();
+    expect(loadDateDepartureIssue('2026-07-31T22:00', '2026-08-01T08:00')).toContain(
+      'anterior',
+    );
+    expect(loadDateDepartureIssue('2026-08-02T06:00', '2026-08-01T08:00')).toContain(
+      'posterior',
+    );
+  });
 
   it('accepts departure <= arrival <= completion', () => {
     expect(isPlannedScheduleValid(dep, arr, fin)).toBe(true);

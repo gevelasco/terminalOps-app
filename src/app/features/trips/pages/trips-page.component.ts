@@ -14,7 +14,7 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
-import { catchError, firstValueFrom, of } from 'rxjs';
+import { firstValueFrom, fromEvent, of, takeUntil } from 'rxjs';
 import { ToastService } from '@core/notifications/toast.service';
 import { SessionService } from '@core/services/state/session';
 import { PlanEntitlementService } from '@shared/billing/plan-entitlement.service';
@@ -30,10 +30,7 @@ import {
   buildManiobrasCsv,
   downloadManiobrasCsv,
 } from '@features/trips/utils/trips-export-csv';
-import {
-  debouncedTrimmedSearchQuery,
-  EXPENSES_SEARCH_DEBOUNCE_MS,
-} from '@features/expenses/utils/expenses-search-query.util';
+import { debouncedTrimmedSearchQuery } from '@features/expenses/utils/expenses-search-query.util';
 import { TRIP_EVALUATION_PROVIDERS } from '@shared/services/trip-evaluation.providers';
 import { Trip, TripStatus } from '@shared/models/logistics.models';
 import { tripStatusUiLabel } from '@shared/utils/trip-status-ui';
@@ -66,6 +63,9 @@ import { TripLoadPlacesFeatureService } from '@features/trips/services/trip-load
 import { TripsFeatureService } from '@features/trips/services/trips.service';
 import { OPERATION_CONFIGURATION_PROVIDERS } from '@shared/services/operation-configuration.providers';
 import { OperationConfigurationResolverService } from '@shared/services/operation-configuration-resolver.service';
+
+/** Más corto que gastos: cada tecla no debe esperar medio segundo. */
+export const TRIPS_SEARCH_DEBOUNCE_MS = 280;
 
 export type TripsStatusFilter = TripStatus | 'all';
 
@@ -144,7 +144,7 @@ export class TripsPageComponent implements OnInit {
 
     debouncedTrimmedSearchQuery(
       toObservable(this.searchInput),
-      EXPENSES_SEARCH_DEBOUNCE_MS,
+      TRIPS_SEARCH_DEBOUNCE_MS,
     )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((q) => this.searchQuery.set(q));
@@ -282,7 +282,7 @@ export class TripsPageComponent implements OnInit {
 
   private readonly listResource = resource<TripsListResponse, TripsListParams | undefined>({
     request: () => this.listRequest(),
-    loader: async ({ request }): Promise<TripsListResponse> => {
+    loader: async ({ request, abortSignal }): Promise<TripsListResponse> => {
       if (!request) {
         return {
           items: [],
@@ -292,18 +292,26 @@ export class TripsPageComponent implements OnInit {
         };
       }
       const params = request;
-      return firstValueFrom(
-        this.tripsApi.getTripsPage(params).pipe(
-          catchError(() =>
-            of({
-              items: [] as Trip[],
-              total: 0,
-              page: params.page ?? 1,
-              limit: params.limit ?? 15,
-            } satisfies TripsListResponse),
+      const empty: TripsListResponse = {
+        items: [],
+        total: 0,
+        page: params.page ?? 1,
+        limit: params.limit ?? 15,
+      };
+      try {
+        return await firstValueFrom(
+          this.tripsApi.getTripsPage(params).pipe(
+            takeUntil(
+              abortSignal.aborted ? of(undefined) : fromEvent(abortSignal, 'abort'),
+            ),
           ),
-        ),
-      );
+        );
+      } catch (err) {
+        if (abortSignal.aborted) {
+          throw err;
+        }
+        return empty;
+      }
     },
   });
 

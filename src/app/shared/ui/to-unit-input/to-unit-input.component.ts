@@ -19,8 +19,14 @@ import {
   buildManeuverAssignableUnitRows,
   type ManeuverAssignableUnitRow,
 } from '@features/trips/utils/assignable-fleet-for-maneuver';
+import {
+  fleetOperationalKeyLabel,
+  fleetOperationalPillClass,
+  type FleetOperationalKey,
+} from '@features/fleet/utils/fleet-unit-table-row';
 import { Trip, TripOperationType, Unit } from '@shared/models/logistics.models';
 import { installAutocompleteOutsideDismiss } from '@shared/ui/autocomplete-outside-dismiss';
+import { resolveUnitOperationalKey } from '@shared/utils/fleet/fleet-status.resolver';
 
 let seq = 0;
 
@@ -48,6 +54,8 @@ export class ToUnitInputComponent {
   readonly emptyMessage = input(
     'No hay unidades disponibles (en maniobra o no activas).',
   );
+  /** Maniobra histórica: listar también unidades que hoy están en viaje. */
+  readonly ignoreCurrentAvailability = input(false);
 
   readonly prefetchMode = input(false);
   readonly unitsData = input<readonly Unit[]>([]);
@@ -92,7 +100,9 @@ export class ToUnitInputComponent {
     effect(() => {
       if (this.prefetchMode()) {
         this.rows.set(
-          buildManeuverAssignableUnitRows(this.unitsData(), this.tripsData()),
+          buildManeuverAssignableUnitRows(this.unitsData(), this.tripsData(), {
+            ignoreCurrentAvailability: this.ignoreCurrentAvailability(),
+          }),
         );
         this.syncInputFromUnitId();
         this.loading.set(this.dataLoading());
@@ -128,12 +138,31 @@ export class ToUnitInputComponent {
   private syncInputFromUnitId(): void {
     const id = this.unitId().trim();
     if (!id) {
+      const selected = this.rows().find((r) => r.displayLabel === this.inputText());
+      if (selected) {
+        this.inputText.set('');
+      }
       return;
     }
     const row = this.rows().find((r) => r.unit.id === id);
     if (row) {
       this.inputText.set(row.displayLabel);
     }
+  }
+
+  unitStatusKey(unit: Unit): FleetOperationalKey {
+    return resolveUnitOperationalKey({
+      persistedStatus: unit.status,
+      isActive: unit.isActive !== false,
+    });
+  }
+
+  unitStatusPillClass(unit: Unit): string {
+    return fleetOperationalPillClass(this.unitStatusKey(unit));
+  }
+
+  unitStatusPillLabel(unit: Unit): string {
+    return fleetOperationalKeyLabel(this.unitStatusKey(unit));
   }
 
   onInput(ev: Event): void {

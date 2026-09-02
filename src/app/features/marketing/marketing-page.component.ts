@@ -26,6 +26,30 @@ type PlanCard = {
 export class MarketingPageComponent {
   protected readonly currentYear = new Date().getFullYear();
 
+  protected readonly operationStates = [
+    {
+      src: '/mkt-como-va-tu-operacion-1.png',
+      width: 409,
+      height: 622,
+      label: 'Improvisada',
+      alt: 'Camión con lona improvisada, inestable y sin luces.',
+    },
+    {
+      src: '/mkt-como-va-tu-operacion-2.png',
+      width: 392,
+      height: 628,
+      label: 'Aparentando orden',
+      alt: 'Contenedor con apariencia de orden, inclinado y con placa deteriorada.',
+    },
+    {
+      src: '/mkt-como-va-tu-operacion-3.png',
+      width: 412,
+      height: 639,
+      label: 'Controlada y segura',
+      alt: 'Contenedor controlado y seguro, con placa Terminal y luces en buen estado.',
+    },
+  ] as const;
+
   /** Seis capacidades clave (sin repetir lo que ya desarrollan otras secciones). */
   protected readonly features: FeatureCard[] = [
     {

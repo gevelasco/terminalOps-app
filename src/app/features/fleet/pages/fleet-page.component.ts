@@ -75,6 +75,8 @@ import {
   FLEET_TABLE_PAGE_SIZE_OPTIONS,
 } from '@shared/utils/list-display-cap';
 import type { Unit } from '@shared/models/logistics.models';
+import { companyMaintenancePolicyFromSession } from '@shared/models/company-operational-settings.models';
+import { resourceIdsEqual } from '@shared/utils/resource-id';
 import {
   ToSegmentControlComponent,
   type ToSegmentTab,
@@ -258,6 +260,16 @@ export class FleetPageComponent implements OnInit {
 
   readonly unitList = this.fleet.units;
   readonly equipmentList = this.fleet.equipment;
+
+  readonly companyMaintPolicy = computed(() =>
+    companyMaintenancePolicyFromSession({
+      maintenanceKmControlEnabled: this.planEntitlements.effectiveMaintenanceKmEnabled(),
+      maintenanceKmIntervalDefault: this.session.maintenanceKmIntervalDefault(),
+      maintenanceDateControlEnabled:
+        this.planEntitlements.effectiveMaintenanceDateEnabled(),
+      maintenanceDatePeriodDefault: this.session.maintenanceDatePeriodDefault(),
+    }),
+  );
   readonly unitListMutable = computed(() => [...this.unitList()]);
   readonly equipmentListMutable = computed(() => [...this.equipmentList()]);
 
@@ -374,6 +386,7 @@ export class FleetPageComponent implements OnInit {
         operationalOverride: operational,
         hitchedEquipment: hitched,
         insuranceExpenses: insuranceExpensesForUnit(coverageExpenses, u.id),
+        policy: this.companyMaintPolicy(),
       };
     };
     const filtered = q
@@ -408,12 +421,15 @@ export class FleetPageComponent implements OnInit {
     return list
       .map((e) => {
         const operational = this.equipmentOperationalKey(e);
+        const tractor = units.find((u) => resourceIdsEqual(u.id, e.unitId));
         return {
           e,
           row: buildFleetEquipmentTableRow(e, {
             onRoute: operational === 'on_route',
             operationalOverride: operational,
             insuranceExpenses: insuranceExpensesForEquipment(coverageExpenses, e.id),
+            policy: this.companyMaintPolicy(),
+            maintenanceKmMeta: tractor?.fleetMeta,
           }),
         };
       })

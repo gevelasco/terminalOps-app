@@ -14,6 +14,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { OperatorsService } from '@services/api/operators';
+import { operatorOperationalStatusLabel } from '@shared/catalogs/operator-form-options';
 import {
   Trip,
   TripStatus,
@@ -22,6 +23,8 @@ import {
 } from '@shared/models/logistics.models';
 import { installAutocompleteOutsideDismiss } from '@shared/ui/autocomplete-outside-dismiss';
 import { isFleetResourceActive } from '@shared/utils/fleet-resource-active';
+import { resolveOperatorOperationalStatus } from '@shared/utils/fleet/fleet-status.resolver';
+import { operatorOperationalPillClass } from '@shared/utils/operator-operational-pill';
 
 /** Puede asignarse a maniobra si no está ya en una activa. */
 const PICKABLE_OPERATOR_STATUSES: OperatorOperationalStatus[] = [
@@ -37,11 +40,14 @@ const ACTIVE_MANEUVER_STATUSES: TripStatus[] = ['scheduled', 'in_transit'];
 function pickAvailableOperators(
   operators: readonly Operator[],
   trips: readonly Trip[],
+  ignoreCurrentAvailability = false,
 ): Operator[] {
   const busy = new Set<string>();
-  for (const t of trips) {
-    if (ACTIVE_MANEUVER_STATUSES.includes(t.status)) {
-      busy.add(t.operatorId);
+  if (!ignoreCurrentAvailability) {
+    for (const t of trips) {
+      if (ACTIVE_MANEUVER_STATUSES.includes(t.status)) {
+        busy.add(t.operatorId);
+      }
     }
   }
   const avail = operators.filter(
@@ -69,6 +75,11 @@ export class ToOperatorInputComponent {
 
   readonly label = input<string>('');
   readonly placeholder = input<string>('');
+  readonly emptyMessage = input(
+    'No hay operadores disponibles (en maniobra o no activos).',
+  );
+  /** Maniobra histórica: listar también operadores que hoy están en viaje. */
+  readonly ignoreCurrentAvailability = input(false);
 
   readonly prefetchMode = input(false);
   readonly operatorsData = input<readonly Operator[]>([]);
@@ -117,8 +128,13 @@ export class ToOperatorInputComponent {
     effect(() => {
       if (this.prefetchMode()) {
         this.availableOperators.set(
-          pickAvailableOperators(this.operatorsData(), this.tripsData()),
+          pickAvailableOperators(
+            this.operatorsData(),
+            this.tripsData(),
+            this.ignoreCurrentAvailability(),
+          ),
         );
+        this.syncInputFromOperatorId();
         this.loading.set(this.dataLoading());
         this.maybeOpenIfFocused();
         return;
@@ -164,6 +180,36 @@ export class ToOperatorInputComponent {
       }
     }
     this.open.set(true);
+  }
+
+  private syncInputFromOperatorId(): void {
+    const id = this.operatorId().trim();
+    if (!id) {
+      const selected = this.availableOperators().find((o) => o.name === this.inputText());
+      if (selected) {
+        this.inputText.set('');
+      }
+      return;
+    }
+    const op = this.availableOperators().find((o) => o.id === id);
+    if (op) {
+      this.inputText.set(op.name);
+    }
+  }
+
+  operatorStatus(op: Operator): OperatorOperationalStatus {
+    return resolveOperatorOperationalStatus({
+      status: op.status,
+      isActive: op.isActive !== false,
+    });
+  }
+
+  operatorStatusPillClass(op: Operator): string {
+    return operatorOperationalPillClass(this.operatorStatus(op));
+  }
+
+  operatorStatusPillLabel(op: Operator): string {
+    return operatorOperationalStatusLabel(this.operatorStatus(op));
   }
 
   onFocus(): void {

@@ -1,5 +1,50 @@
 import { dateTimeLocalValueToIso } from './datetime-local';
 
+function startOfLocalDay(value: Date): number {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+}
+
+function localDateTimeIsOnOrAfterToday(local: string, now: Date): boolean {
+  const iso = dateTimeLocalValueToIso(local);
+  if (!iso) {
+    return false;
+  }
+  return startOfLocalDay(new Date(iso)) >= startOfLocalDay(now);
+}
+
+/**
+ * Maniobra ya cerrada en días anteriores. Si salida, cita o llegada origen
+ * pueden caer hoy o después, la asignación vuelve a ser solo disponibles.
+ */
+export function isHistoricalManeuverAssignment(
+  departureLocal: string,
+  nowOrOptions?: Date | {
+    arrivalLocal?: string;
+    completionLocal?: string;
+    now?: Date;
+  },
+): boolean {
+  const opts =
+    nowOrOptions instanceof Date || nowOrOptions == null
+      ? { now: nowOrOptions }
+      : nowOrOptions;
+  const now = opts.now ?? new Date();
+  const departureIso = dateTimeLocalValueToIso(departureLocal);
+  if (!departureIso) {
+    return false;
+  }
+  if (startOfLocalDay(new Date(departureIso)) >= startOfLocalDay(now)) {
+    return false;
+  }
+  if (
+    localDateTimeIsOnOrAfterToday(opts.arrivalLocal ?? '', now) ||
+    localDateTimeIsOnOrAfterToday(opts.completionLocal ?? '', now)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 /** Contrato de planificación: salida ≤ cita cliente ≤ llegada origen. */
 export function isPlannedScheduleValid(
   departureLocal: string,
@@ -73,6 +118,40 @@ export function plannedScheduleOrderToastMessage(
     plannedScheduleCompletionDepartureOrderIssue(departureLocal, completionLocal) ??
     plannedScheduleCompletionOrderIssue(arrivalLocal, completionLocal)
   );
+}
+
+/** Día local `YYYY-MM-DD` de un `datetime-local`. */
+export function dateTimeLocalDay(local: string): string | null {
+  const t = local.trim();
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(t)) {
+    return null;
+  }
+  return t.slice(0, 10);
+}
+
+/**
+ * Carga (opcional) y salida: si hay fecha de carga, debe ser el mismo día.
+ * Vacío no es error.
+ */
+export function loadDateDepartureIssue(
+  loadLocal: string,
+  departureLocal: string,
+): string | null {
+  if (!loadLocal.trim()) {
+    return null;
+  }
+  const loadDay = dateTimeLocalDay(loadLocal);
+  const departureDay = dateTimeLocalDay(departureLocal);
+  if (!loadDay || !departureDay) {
+    return null;
+  }
+  if (loadDay < departureDay) {
+    return 'La fecha de carga no puede ser anterior a la salida.';
+  }
+  if (loadDay > departureDay) {
+    return 'La fecha de carga no puede ser posterior a la salida.';
+  }
+  return null;
 }
 
 export function plannedScheduleIsoTriplet(

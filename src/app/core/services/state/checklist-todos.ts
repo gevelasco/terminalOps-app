@@ -6,6 +6,7 @@ import {
   type ChecklistTodoApi,
 } from '@core/services/api/checklist';
 import { SessionService } from '@core/services/state/session';
+import { checklistBadgeCount } from '@core/utils/checklist-badge.util';
 
 const STORAGE_PREFIX = 'terminalops.checklist.';
 
@@ -66,6 +67,7 @@ export class ChecklistTodosStore {
   private readonly items = signal<ChecklistTodo[]>([]);
   private loadedKey: string | null = null;
   private loadPromise: Promise<void> | null = null;
+  private readonly listHydrated = signal(false);
 
   readonly loading = signal(false);
   readonly mutating = signal(false);
@@ -78,7 +80,11 @@ export class ChecklistTodosStore {
   );
 
   readonly pendingCount = computed(() =>
-    this.todos().filter((t) => !t.completed).length,
+    checklistBadgeCount(
+      this.listHydrated() || this.items().length > 0,
+      this.items().filter((t) => !t.completed).length,
+      this.session.openChecklistCount(),
+    ),
   );
 
   ensureLoaded(): void {
@@ -90,6 +96,7 @@ export class ChecklistTodosStore {
     const userId = this.session.userId();
     if (!companyId || !userId) {
       this.loadedKey = null;
+      this.listHydrated.set(false);
       this.items.set([]);
       return;
     }
@@ -108,6 +115,7 @@ export class ChecklistTodosStore {
       .catch((err: unknown) => {
         if (this.loadedKey === key) {
           this.loadedKey = null;
+          this.listHydrated.set(false);
           this.items.set([]);
         }
         throw err;
@@ -134,6 +142,8 @@ export class ChecklistTodosStore {
     try {
       const created = await firstValueFrom(this.api.create(companyId, trimmed));
       this.items.update((list) => [toTodo(created), ...list]);
+      this.listHydrated.set(true);
+      this.syncOpenCountFromItems();
       return true;
     } finally {
       this.mutating.set(false);
@@ -152,6 +162,7 @@ export class ChecklistTodosStore {
         item.id === id ? { ...item, completed: nextCompleted } : item,
       ),
     );
+    this.syncOpenCountFromItems();
     try {
       await firstValueFrom(
         this.api.update(companyId, id, { completed: nextCompleted }),
@@ -162,6 +173,7 @@ export class ChecklistTodosStore {
           item.id === id ? { ...item, completed: current.completed } : item,
         ),
       );
+      this.syncOpenCountFromItems();
       throw new Error('No se pudo actualizar la tarea.');
     }
   }
@@ -173,10 +185,12 @@ export class ChecklistTodosStore {
       return;
     }
     this.items.update((list) => list.filter((item) => item.id !== id));
+    this.syncOpenCountFromItems();
     try {
       await firstValueFrom(this.api.remove(companyId, id));
     } catch {
       this.items.update((list) => [removed, ...list]);
+      this.syncOpenCountFromItems();
       throw new Error('No se pudo eliminar la tarea.');
     }
   }
@@ -185,16 +199,29 @@ export class ChecklistTodosStore {
   clear(): void {
     this.loadedKey = null;
     this.loadPromise = null;
+    this.listHydrated.set(false);
     this.loading.set(false);
     this.mutating.set(false);
     this.items.set([]);
+  }
+
+  private syncOpenCountFromItems(): void {
+    this.session.setOpenChecklistCount(
+      this.items().filter((todo) => !todo.completed).length,
+    );
+  }
+
+  private commitList(todos: ChecklistTodo[]): void {
+    this.items.set(todos);
+    this.listHydrated.set(true);
+    this.syncOpenCountFromItems();
   }
 
   private async fetchAndMaybeMigrate(companyId: string): Promise<void> {
     const remote = await firstValueFrom(this.api.list(companyId));
     const mapped = remote.map(toTodo);
     if (mapped.length > 0) {
-      this.items.set(mapped);
+      this.commitList(mapped);
       const username = this.session.username();
       if (username) {
         clearLocalTodos(username);
@@ -205,7 +232,7 @@ export class ChecklistTodosStore {
     const username = this.session.username();
     const local = username ? loadLocalTodos(username) : [];
     if (local.length === 0) {
-      this.items.set([]);
+      this.commitList([]);
       return;
     }
 
@@ -225,6 +252,6 @@ export class ChecklistTodosStore {
       clearLocalTodos(username);
     }
     const migrated = await firstValueFrom(this.api.list(companyId));
-    this.items.set(migrated.map(toTodo));
+    this.commitList(migrated.map(toTodo));
   }
 }

@@ -24,6 +24,7 @@ import { AuthFacade } from '@core/services/auth.facade';
 import { SessionLifecycleService } from '@core/services/session-lifecycle.service';
 import { SessionService } from '@core/services/state/session';
 import { NotificationsUnreadStore } from '@core/services/state/notifications-unread.store';
+import { ChecklistTodosStore } from '@core/services/state/checklist-todos';
 import {
   initialsFromDisplayName,
   UserProfileStore,
@@ -52,6 +53,7 @@ export class ShellComponent implements OnDestroy {
   private readonly sessionLifecycle = inject(SessionLifecycleService);
   private readonly profiles = inject(UserProfileStore);
   private readonly notificationsUnread = inject(NotificationsUnreadStore);
+  private readonly checklist = inject(ChecklistTodosStore);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -125,6 +127,16 @@ export class ShellComponent implements OnDestroy {
 
   readonly notificationBadgeLabel = computed(() => {
     const n = this.notificationCount();
+    if (n > 99) {
+      return '99+';
+    }
+    return String(n);
+  });
+
+  readonly checklistPendingCount = computed(() => this.checklist.pendingCount());
+
+  readonly checklistBadgeLabel = computed(() => {
+    const n = this.checklistPendingCount();
     if (n > 99) {
       return '99+';
     }

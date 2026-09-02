@@ -28,6 +28,15 @@ yarn-error.log
 !.vscode/extensions.json
 .history/*
 
+# Generated-data caches (Natural Earth extract, etc.)
+/scripts/.cache
+
+# Local marketing source / iteration checkpoints (not used by the app)
+/terminalops-prefieres-manejar-tu-operacion.png
+/public/mkt-como-va-tu-operacion.png
+/public/mkt-como-va-tu-operacion.v1.png
+/public/mkt-como-va-tu-operacion.v2.png
+
 # Miscellaneous
 /.angular/cache
 .sass-cache/

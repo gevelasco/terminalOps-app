@@ -46,12 +46,18 @@
               tabindex="-1"
               (pointerdown)="onPickPointerDown(op, $event)"
             >
-              {{ op.name }}
+              <span [class]="operatorStatusPillClass(op)">
+                <span class="to-table-pill__dot" aria-hidden="true"></span>
+                <span class="to-table-pill__label">{{
+                  operatorStatusPillLabel(op)
+                }}</span>
+              </span>
+              <span class="to-operator-input__item-label">{{ op.name }}</span>
             </li>
           }
         } @else {
           <li class="to-operator-input__empty" role="presentation">
-            No hay operadores disponibles (en maniobra o no activos).
+            {{ emptyMessage() }}
           </li>
         }
       </ul>

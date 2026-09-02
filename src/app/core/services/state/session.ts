@@ -9,6 +9,7 @@ import type { CompanyOperationalSettings } from '@shared/models/company-operatio
 import type { MaintenanceDatePeriod } from '@shared/models/company-operational-settings.models';
 import { normalizePaymentReminderDays } from '@shared/models/company-operational-settings.models';
 import { normalizeApiIsoDate } from '@core/utils/api-date';
+import { normalizeOpenChecklistCount } from '@core/utils/checklist-badge.util';
 import {
   SESSION_TAB_CHANNEL,
   SESSION_TAB_HANDOFF_MS,
@@ -151,6 +152,9 @@ export class SessionService {
   readonly theme = computed(() => this.data()?.theme ?? 'light');
   readonly userId = computed(() => this.data()?.id ?? null);
   readonly username = computed(() => this.data()?.username ?? null);
+  readonly openChecklistCount = computed(
+    () => this.data()?.openChecklistCount ?? 0,
+  );
   readonly name = computed(() => this.data()?.name ?? null);
   readonly email = computed(() => this.data()?.email ?? null);
   readonly phone = computed(() => this.data()?.phone ?? null);
@@ -353,6 +357,20 @@ export class SessionService {
       return;
     }
     const next = { ...current, subscriptionPlanId: normalized };
+    this.data.set(next);
+    saveEncryptedSession(next);
+  }
+
+  setOpenChecklistCount(count: number): void {
+    const current = this.data();
+    if (!current) {
+      return;
+    }
+    const openChecklistCount = normalizeOpenChecklistCount(count);
+    if (current.openChecklistCount === openChecklistCount) {
+      return;
+    }
+    const next = { ...current, openChecklistCount };
     this.data.set(next);
     saveEncryptedSession(next);
   }
@@ -929,6 +947,9 @@ export class SessionService {
         user.operationalCenterLatitude ?? payload?.operationalCenterLatitude,
       operationalCenterLongitude:
         user.operationalCenterLongitude ?? payload?.operationalCenterLongitude,
+      openChecklistCount: normalizeOpenChecklistCount(
+        user.openChecklistCount ?? payload?.openChecklistCount,
+      ),
       // Si el API omite el plan, caer a basic — no conservar plan stale de sesión previa.
       subscriptionPlanId: normalizeSubscriptionPlanId(
         user.subscriptionPlan ?? 'basic',

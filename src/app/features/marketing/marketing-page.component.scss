@@ -142,7 +142,7 @@
 /* ── Hero ── */
 .mkt-hero {
   position: relative;
-  padding-block: clamp(2.75rem, 7vw, 5.5rem) clamp(3.5rem, 8vw, 6rem);
+  padding-block: clamp(2.75rem, 7vw, 5.5rem) clamp(2rem, 5vw, 3.25rem);
   overflow: hidden;
   isolation: isolate;
 }
@@ -252,7 +252,6 @@
   min-width: 0;
 }
 
-/* Dashboard mock */
 .mkt-dash {
   border-radius: 1rem;
   background: var(--mkt-white);
@@ -423,9 +422,56 @@
   }
 }
 
+.mkt-states {
+  padding: clamp(2rem, 5vw, 3.25rem) var(--mkt-gutter) clamp(1.25rem, 3vw, 2rem);
+  border-top: 1px solid var(--mkt-line);
+  background: #ffffff;
+}
+
+.mkt-states__head {
+  width: min(100%, 46rem);
+  margin: 0 auto 1.35rem;
+  text-align: center;
+}
+
+.mkt-states__grid {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  width: min(100%, 48rem);
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  column-gap: 4.5rem;
+}
+
+.mkt-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 0 0 11.5rem;
+  width: 11.5rem;
+  gap: 2.25rem;
+}
+
+.mkt-state__art {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.mkt-state__label {
+  margin: 0;
+  text-align: center;
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
 /* ── Features ── */
 .mkt-features {
-  padding-block: clamp(3rem, 8vw, 5.5rem) clamp(4rem, 9vw, 6rem);
+  padding-block: clamp(1.5rem, 4vw, 2.75rem) clamp(4rem, 9vw, 6rem);
+  border-top: 1px solid var(--mkt-line);
   background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
 }
 
@@ -595,11 +641,15 @@
   height: auto;
 }
 
-.mkt-map__land,
-.mkt-map__peninsula {
-  fill: color-mix(in srgb, #1d4ed8 55%, #0f172a);
-  stroke: rgb(147 197 253 / 0.35);
-  stroke-width: 1.25;
+.mkt-map__states {
+  filter: drop-shadow(0 10px 18px rgb(15 23 42 / 0.35));
+}
+
+.mkt-map__land {
+  fill: color-mix(in srgb, #1e40af 42%, #0f172a);
+  stroke: rgb(147 197 253 / 0.28);
+  stroke-width: 0.55;
+  stroke-linejoin: round;
 }
 
 .mkt-map__route {

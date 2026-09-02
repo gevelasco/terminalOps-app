@@ -38,8 +38,15 @@ import {
   tripIdsByDestinationState,
   type MexicoStatesGeoJson,
 } from '@features/trips/utils/trips-map-state-activity';
-import { countManeuversByDestinationStateBreakdown } from '@features/trips/utils/trips-map-state-tooltip';
+import {
+  countManeuversByDestinationStateBreakdown,
+} from '@features/trips/utils/trips-map-state-tooltip';
 import { countTripsMapByStatus } from '@features/trips/utils/trips-map-viewport.util';
+import {
+  EMPTY_MEXICO_HIGHWAYS,
+  parseMexicoHighwaysJson,
+  type MexicoHighwaysJson,
+} from '@features/trips/utils/trips-map-highways.util';
 
 @Component({
   selector: 'app-maniobra-route-map',
@@ -77,6 +84,7 @@ export class ManiobraRouteMapComponent implements AfterViewInit, OnDestroy {
   private geoRegistered = false;
   private geoJson: MexicoStatesGeoJson | null = null;
   private readonly geoJsonSignal = signal<MexicoStatesGeoJson | null>(null);
+  private highways: MexicoHighwaysJson = EMPTY_MEXICO_HIGHWAYS;
   private readonly routeGeometries = signal<TripMapRouteGeometryById>(
     new Map(),
   );
@@ -173,14 +181,22 @@ export class ManiobraRouteMapComponent implements AfterViewInit, OnDestroy {
   }
 
   private async registerMexicoMap(): Promise<void> {
-    const geo = await firstValueFrom(
-      this.http
-        .get<Record<string, unknown>>('/geo/mexico-states.json')
-        .pipe(takeUntilDestroyed(this.destroyRef)),
-    );
+    const [geo, highwaysRaw] = await Promise.all([
+      firstValueFrom(
+        this.http
+          .get<Record<string, unknown>>('/geo/mexico-states.json')
+          .pipe(takeUntilDestroyed(this.destroyRef)),
+      ),
+      firstValueFrom(
+        this.http
+          .get<unknown>('/geo/mexico-highways.json')
+          .pipe(takeUntilDestroyed(this.destroyRef)),
+      ).catch(() => null),
+    ]);
     ensureTripsMapEchartsModules().registerMap(TRIPS_MAP_GEO_NAME, geo as never);
     this.geoJson = geo as unknown as MexicoStatesGeoJson;
     this.geoJsonSignal.set(this.geoJson);
+    this.highways = parseMexicoHighwaysJson(highwaysRaw);
     this.geoRegistered = true;
   }
 
@@ -189,7 +205,12 @@ export class ManiobraRouteMapComponent implements AfterViewInit, OnDestroy {
       return;
     }
     this.chart.setOption(
-      buildTripsMapEchartsOption(this.items(), this.geoJson, this.routeGeometries()),
+      buildTripsMapEchartsOption(
+        this.items(),
+        this.geoJson,
+        this.routeGeometries(),
+        this.highways,
+      ),
       true,
     );
     this.chart.off('click');

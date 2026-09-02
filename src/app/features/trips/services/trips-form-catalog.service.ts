@@ -12,6 +12,12 @@ import {
 import { createRequestGeneration } from '@shared/utils/request-generation';
 import { catchError, finalize, forkJoin, map, of, Subscription } from 'rxjs';
 
+type UnitCatalogFilter = {
+  operationType?: string;
+  containerType?: string;
+  available?: boolean;
+};
+
 /**
  * Catálogos para formularios de trips (lazy, scope de `/trips`).
  * Cada catálogo se carga bajo demanda según la interacción del usuario
@@ -41,6 +47,8 @@ export class TripsFormCatalogService {
   private fleetFilterKey = '';
   private fleetSub: Subscription | null = null;
   private operatorsStarted = false;
+  private operatorsFilterKey = '';
+  private operatorsSub: Subscription | null = null;
   private readonly loadSubs: Subscription[] = [];
   private complianceSub: Subscription | null = null;
   private complianceKey = '';
@@ -85,35 +93,26 @@ export class TripsFormCatalogService {
   }
 
   /**
-   * Unidades asignables (`?available=true`).
+   * Unidades asignables. Con `available: true` (default) solo las libres ahora.
    * Sin filtro de convoy/contenedor: todas las aptas para una maniobra.
    * Con filtro: solo las compatibles con esa configuración.
    */
-  ensureUnitsLoaded(filter?: {
-    operationType?: string;
-    containerType?: string;
-  }): void {
+  ensureUnitsLoaded(filter?: UnitCatalogFilter): void {
     this.loadAssignableUnits(filter, { requireStarted: false, force: false });
   }
 
   /** Siempre vuelve a pedir el listado (cada foco del input de unidad). */
-  reloadUnits(filter?: {
-    operationType?: string;
-    containerType?: string;
-  }): void {
+  reloadUnits(filter?: UnitCatalogFilter): void {
     this.loadAssignableUnits(filter, { requireStarted: false, force: true });
   }
 
-  /** Recarga si el catálogo ya se pidió y cambió configuración o contenedor. */
-  syncLoadedUnitsFilter(filter: {
-    operationType?: string;
-    containerType?: string;
-  }): void {
+  /** Recarga si el catálogo ya se pidió y cambió configuración, contenedor o disponibilidad. */
+  syncLoadedUnitsFilter(filter: UnitCatalogFilter): void {
     this.loadAssignableUnits(filter, { requireStarted: true, force: false });
   }
 
   private loadAssignableUnits(
-    filter: { operationType?: string; containerType?: string } | undefined,
+    filter: UnitCatalogFilter | undefined,
     options: { requireStarted: boolean; force: boolean },
   ): void {
     if (this.disposed) {
@@ -124,7 +123,8 @@ export class TripsFormCatalogService {
     }
     const operationType = filter?.operationType?.trim() ?? '';
     const containerType = filter?.containerType?.trim() ?? '';
-    const key = `${operationType}|${containerType}`;
+    const available = filter?.available !== false;
+    const key = `${available ? '1' : '0'}|${operationType}|${containerType}`;
     if (!options.force && this.fleetStarted && this.fleetFilterKey === key) {
       return;
     }
@@ -136,9 +136,9 @@ export class TripsFormCatalogService {
     this.fleetSub?.unsubscribe();
     this.fleetSub = this.unitsApi
       .getUnitsList({
-        available: true,
-        operationType: operationType || undefined,
-        containerType: containerType || undefined,
+        available,
+        operationType: available ? operationType || undefined : undefined,
+        containerType: available ? containerType || undefined : undefined,
       })
       .pipe(
         catchError(() => of([] as Unit[])),
@@ -155,31 +155,55 @@ export class TripsFormCatalogService {
       });
   }
 
-  /** Operadores disponibles (`?available=true`); se dispara al enfocar el input. */
-  ensureOperatorsLoaded(): void {
-    if (this.disposed || this.operatorsStarted) {
+  /** Operadores; `available: true` (default) excluye a quienes están en viaje. */
+  ensureOperatorsLoaded(filter?: { available?: boolean }): void {
+    this.loadAssignableOperators(filter, { requireStarted: false, force: false });
+  }
+
+  reloadOperators(filter?: { available?: boolean }): void {
+    this.loadAssignableOperators(filter, { requireStarted: false, force: true });
+  }
+
+  syncLoadedOperators(filter: { available?: boolean }): void {
+    this.loadAssignableOperators(filter, { requireStarted: true, force: false });
+  }
+
+  private loadAssignableOperators(
+    filter: { available?: boolean } | undefined,
+    options: { requireStarted: boolean; force: boolean },
+  ): void {
+    if (this.disposed) {
+      return;
+    }
+    if (options.requireStarted && !this.operatorsStarted) {
+      return;
+    }
+    const available = filter?.available !== false;
+    const key = available ? '1' : '0';
+    if (!options.force && this.operatorsStarted && this.operatorsFilterKey === key) {
       return;
     }
     this.operatorsStarted = true;
+    this.operatorsFilterKey = key;
     const requestId = this.requestGen.next();
     this._operatorsLoading.set(true);
-    this.loadSubs.push(
-      this.operatorsApi
-        .getOperatorsList({ available: true })
-        .pipe(
-          catchError(() => of([] as Operator[])),
-          finalize(() => {
-            if (this.requestGen.isCurrent(requestId)) {
-              this._operatorsLoading.set(false);
-            }
-          }),
-        )
-        .subscribe((rows) => {
-          if (this.canApplyResponse(requestId)) {
-            this._operators.set(rows);
+    this._operators.set([]);
+    this.operatorsSub?.unsubscribe();
+    this.operatorsSub = this.operatorsApi
+      .getOperatorsList({ available })
+      .pipe(
+        catchError(() => of([] as Operator[])),
+        finalize(() => {
+          if (this.requestGen.isCurrent(requestId)) {
+            this._operatorsLoading.set(false);
           }
         }),
-    );
+      )
+      .subscribe((rows) => {
+        if (this.canApplyResponse(requestId)) {
+          this._operators.set(rows);
+        }
+      });
   }
 
   /**
@@ -276,6 +300,8 @@ export class TripsFormCatalogService {
     this.loadSubs.length = 0;
     this.fleetSub?.unsubscribe();
     this.fleetSub = null;
+    this.operatorsSub?.unsubscribe();
+    this.operatorsSub = null;
     this.complianceSub?.unsubscribe();
     this.complianceSub = null;
     this.clearCatalogSignals();

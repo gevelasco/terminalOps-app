@@ -444,12 +444,48 @@
     color: var(--to-color-text, #1b1b1b);
   }
 
+  &__icon-wrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+
   &__icon {
     display: block;
   }
 
   &__label {
     white-space: nowrap;
+  }
+
+  &__badge {
+    position: absolute;
+    top: -0.2rem;
+    right: -0.35rem;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    padding: 0 0.25rem;
+    border-radius: 999px;
+    font-size: 0.625rem;
+    font-weight: 700;
+    line-height: 1.1rem;
+    text-align: center;
+    color: #fff;
+    background: var(--to-color-danger, #c62828);
+    box-shadow: 0 0 0 2px var(--to-color-surface, #fff);
+    pointer-events: none;
+  }
+}
+
+@media (max-width: 639px) {
+  .shell-icon-text-btn__badge {
+    top: -0.25rem;
+    right: -0.4rem;
+    min-width: 1rem;
+    height: 1rem;
+    line-height: 1rem;
+    font-size: 0.5625rem;
+    padding: 0 0.2rem;
   }
 }
 

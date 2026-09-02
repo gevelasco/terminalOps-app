@@ -479,8 +479,52 @@
   }
 }
 
-@media (max-width: 520px) {
+/* Móvil (<768): mismo corte que isMobileViewport. Sin charts, el body
+   no debe estirarse a 1fr (tarjeta enorme vacía) ni anidar scroll. */
+@media (max-width: 767px) {
+  :host {
+    height: auto;
+    overflow: visible;
+    gap: 0.7rem;
+  }
+
   .dashboard-kpis {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .dashboard-body {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+
+  .dashboard-panel--upcoming {
+    min-height: 0;
+  }
+
+  .dashboard-diesel {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .dashboard-diesel__form {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  :host ::ng-deep to-page-header.dashboard-header .to-page-header {
+    align-items: flex-start;
+    gap: 0.65rem 0.85rem;
+  }
+
+  :host ::ng-deep to-page-header.dashboard-header .to-page-header__actions {
+    margin-left: 0;
+    width: 100%;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  :host ::ng-deep .dashboard-kpis to-kpi-card .to-kpi-card__value {
+    font-size: 1.05rem;
   }
 }
