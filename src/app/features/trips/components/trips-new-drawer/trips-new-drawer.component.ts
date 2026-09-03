@@ -68,6 +68,7 @@ import {
 import {
   buildRouteEndpointPrefillResult,
   destinationPrefillFromClient,
+  destinationPrefillFromDelivery,
   originPrefillFromOperationalCenter,
   routeEndpointFingerprint,
   type TripRouteEndpointPrefill,
@@ -80,6 +81,10 @@ import {
   destinationRateSuggestionInputFingerprint,
   detectDestinationRateManualEdits,
 } from '@features/trips/utils/trips-new-drawer-destination-rate-suggestion.util';
+import {
+  findClientDeliveryForRoute,
+  uniqueClientDeliveryPostalCodes,
+} from '@features/clients/utils/client-deliveries';
 import type { Client } from '@shared/models/client.models';
 import type { DestinationRate } from '@shared/models/destination-rate.models';
 import {
@@ -151,6 +156,7 @@ import {
 import { ToFleetComplianceIconsComponent } from '@shared/ui/to-fleet-compliance-icons/to-fleet-compliance-icons.component';
 import { ToFleetBrandComboboxComponent } from '@shared/ui/to-fleet-brand-combobox/to-fleet-brand-combobox.component';
 import { CargoDescriptionComboboxComponent } from '@features/trips/components/cargo-description-combobox/cargo-description-combobox.component';
+import { DestinationCpComboboxComponent } from '@features/trips/components/destination-cp-combobox/destination-cp-combobox.component';
 import type { ClientCargoHistoryItem } from '@shared/models/api/api-trips-cargo-history.model';
 import { combineLatest, EMPTY, forkJoin, of, throwError, type Observable } from 'rxjs';
 import {
@@ -184,6 +190,7 @@ import type { TripDocumentKind } from '@shared/models/logistics.models';
     ToFleetComplianceIconsComponent,
     ToFleetBrandComboboxComponent,
     CargoDescriptionComboboxComponent,
+    DestinationCpComboboxComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './trips-new-drawer.component.html',
@@ -279,7 +286,9 @@ export class TripsNewDrawerComponent {
     const client = clientId
       ? this.catalog.clients().find((c) => c.id === clientId)
       : undefined;
-    const clientRateId = client?.delivery?.destinationRateId?.trim() ?? '';
+    const clientRateId =
+      findClientDeliveryForRoute(client, cp, destLocality)?.destinationRateId?.trim() ??
+      '';
     return {
       rateOriginId,
       cp,
@@ -341,6 +350,33 @@ export class TripsNewDrawerComponent {
 
   /** Copias mutables para inputs con `prefetchMode` (evita NG4 readonly→mutable). */
   readonly pickerClients = computed((): Client[] => [...this.catalog.clients()]);
+
+  readonly selectedFormClient = computed(() => {
+    if (!this.includeClientBilling()) {
+      return undefined;
+    }
+    const id = this.clientId().trim();
+    if (!id) {
+      return undefined;
+    }
+    return this.catalog.clients().find((c) => c.id === id);
+  });
+
+  readonly destinationCpSuggestions = computed(() =>
+    uniqueClientDeliveryPostalCodes(this.selectedFormClient()),
+  );
+
+  readonly destinationCpUsesSuggestions = computed(
+    () => this.destinationCpSuggestions().length >= 2,
+  );
+
+  readonly destinationCpPlaceholder = computed(() => {
+    const n = this.destinationCpSuggestions().length;
+    if (n >= 2) {
+      return `${n} tarifas disponibles`;
+    }
+    return 'Ej. 77560';
+  });
   /**
    * Si el usuario aún no eligió configuración/contenedor, se listan todas las
    * unidades disponibles. Después se filtra por convoy y contenedor.
@@ -2009,6 +2045,41 @@ export class TripsNewDrawerComponent {
     }
     if (digits.length !== 5) {
       this.toast.show('El código postal de destino debe tener 5 dígitos.', 'warning');
+      return;
+    }
+    this.applyClientDeliveryPrefillForCp(digits);
+  }
+
+  onDestinationCpSuggestionPicked(cp: string): void {
+    const digits = normalizeMxPostalCodeDigits(cp);
+    if (digits.length !== 5) {
+      return;
+    }
+    this.applyClientDeliveryPrefillForCp(digits, true);
+  }
+
+  private applyClientDeliveryPrefillForCp(cpDigits: string, force = false): void {
+    const currentLocality = this.destinationLocalityName();
+    const delivery = findClientDeliveryForRoute(
+      this.selectedFormClient(),
+      cpDigits,
+      force ? undefined : currentLocality || undefined,
+    );
+    if (!delivery) {
+      return;
+    }
+    const deliveryLocality = (delivery.locality ?? '').trim().toLowerCase();
+    if (
+      !force &&
+      currentLocality &&
+      deliveryLocality &&
+      currentLocality.toLowerCase() !== deliveryLocality
+    ) {
+      return;
+    }
+    const prefill = destinationPrefillFromDelivery(delivery);
+    if (prefill) {
+      this.applyRouteEndpointPrefill('destination', prefill);
     }
   }
 

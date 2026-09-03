@@ -18,15 +18,21 @@ import {
   boolToYesNo,
   buildClientDeliveryPayload,
   normalizeContacts,
+  normalizeDeliveries,
   parseOptionalInt,
   validateClientDelivery,
   yesNoToBool,
 } from '@features/clients/utils/client-payload';
+import {
+  isSameClientDeliveryLocation,
+} from '@features/clients/utils/client-deliveries';
+import { clientDeliveryRouteStatusLabel } from '@features/clients/utils/client-delivery-route-link';
 import { ClientsFeatureService } from '@features/clients/services/clients.service';
 import { CLIENT_YES_NO_OPTIONS } from '@shared/catalogs/client-form-options';
 import { TRIP_MANEUVER_PAYMENT_METHOD_OPTIONS } from '@shared/catalogs/trip-client-payment-options';
 import type {
   Client,
+  ClientDelivery,
   CreateClientPayload,
 } from '@shared/models/client.models';
 import { beginInFlight } from '@shared/utils/in-flight-guard';
@@ -37,6 +43,7 @@ import { ClientIdentificationFieldsComponent } from '../client-identification-fi
 import { ClientPayFieldsComponent } from '../client-pay-fields/client-pay-fields.component';
 import { ToButtonComponent } from '@shared/ui/to-button/to-button.component';
 import { ToIconComponent } from '@shared/ui/to-icon/to-icon.component';
+import { ToIconButtonComponent } from '@shared/ui/to-icon-button/to-icon-button.component';
 import { ToSideDrawerComponent } from '@shared/ui/to-side-drawer/to-side-drawer.component';
 import { ToSelectOption } from '@shared/ui/to-select/to-select.component';
 
@@ -54,6 +61,7 @@ import { ToSelectOption } from '@shared/ui/to-select/to-select.component';
     FormsModule,
     ToButtonComponent,
     ToIconComponent,
+    ToIconButtonComponent,
   ],
   templateUrl: './clients-new-drawer.component.html',
   styleUrls: [
@@ -90,6 +98,7 @@ export class ClientsNewDrawerComponent {
   readonly filesFiscal = signal<File[]>([]);
 
   readonly showDeliveryForm = signal(false);
+  readonly deliveries = signal<ClientDelivery[]>([]);
   readonly deliveryCp = model('');
   readonly deliveryCity = model('');
   readonly deliveryLocality = model('');
@@ -119,10 +128,64 @@ export class ClientsNewDrawerComponent {
   }
 
   openDeliveryForm(): void {
+    this.resetDeliveryFormFields();
     this.showDeliveryForm.set(true);
   }
 
   cancelDeliveryForm(): void {
+    this.resetDeliveryFormFields();
+    this.showDeliveryForm.set(false);
+  }
+
+  commitDelivery(): boolean {
+    const err = validateClientDelivery({
+      postalCode: this.deliveryCp(),
+      cityMunicipality: this.deliveryCity(),
+      locality: this.deliveryLocality(),
+      settlementConsId: this.deliverySettlementConsId(),
+      latitude: this.deliveryLatitude(),
+      longitude: this.deliveryLongitude(),
+    });
+    if (err) {
+      this.toast.show(err, 'warning');
+      return false;
+    }
+    const delivery = buildClientDeliveryPayload({
+      postalCode: this.deliveryCp(),
+      cityMunicipality: this.deliveryCity(),
+      locality: this.deliveryLocality(),
+      settlementConsId: this.deliverySettlementConsId(),
+      latitude: this.deliveryLatitude(),
+      longitude: this.deliveryLongitude(),
+      destinationRateId: this.deliveryDestinationRateId(),
+      isUnpricedRoute: this.deliveryIsUnpricedRoute(),
+    });
+    if (!delivery) {
+      this.toast.show('Indica el código postal de entrega.', 'warning');
+      return false;
+    }
+    const duplicate = this.deliveries().some((row) =>
+      isSameClientDeliveryLocation(row, delivery),
+    );
+    if (duplicate) {
+      this.toast.show('Esa ubicación de entrega ya está registrada.', 'warning');
+      return false;
+    }
+    const id = `dlv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    this.deliveries.update((list) => [...list, { ...delivery, id }]);
+    this.cancelDeliveryForm();
+    return true;
+  }
+
+  removeDelivery(id: string): void {
+    this.deliveries.update((list) => list.filter((row) => row.id !== id));
+  }
+
+  deliveryRouteLinkLabel(delivery: ClientDelivery): string {
+    return clientDeliveryRouteStatusLabel(delivery);
+  }
+
+  private resetDeliveryFormFields(): void {
     this.deliveryCp.set('');
     this.deliveryCity.set('');
     this.deliveryLocality.set('');
@@ -131,7 +194,6 @@ export class ClientsNewDrawerComponent {
     this.deliveryLongitude.set(null);
     this.deliveryDestinationRateId.set(null);
     this.deliveryIsUnpricedRoute.set(false);
-    this.showDeliveryForm.set(false);
   }
 
   cancelContactForm(): void {
@@ -178,18 +240,10 @@ export class ClientsNewDrawerComponent {
     }
 
     const deliveryCp = this.deliveryCp().trim();
-    const deliveryErr = deliveryCp
-      ? validateClientDelivery({
-          postalCode: deliveryCp,
-          locality: this.deliveryLocality(),
-          settlementConsId: this.deliverySettlementConsId(),
-          latitude: this.deliveryLatitude(),
-          longitude: this.deliveryLongitude(),
-        })
-      : null;
-    if (deliveryErr) {
-      this.toast.show(deliveryErr, 'warning');
-      return;
+    if (this.showDeliveryForm() && deliveryCp) {
+      if (!this.commitDelivery()) {
+        return;
+      }
     }
 
     const contactName = this.contactName().trim();
@@ -208,6 +262,7 @@ export class ClientsNewDrawerComponent {
     const hasBilling = Object.values(billing).some((v) => v != null && String(v).trim() !== '');
 
     const pendingUploads = this.filesFiscal();
+    const deliveryList = normalizeDeliveries(this.deliveries());
 
     const payload: CreateClientPayload = {
       name: nameText,
@@ -215,18 +270,8 @@ export class ClientsNewDrawerComponent {
       ...(rel ? { relationshipStartedOn: rel } : {}),
       notes: this.notes().trim() || undefined,
       ...(hasBilling ? { billing } : {}),
-      ...(deliveryCp && !deliveryErr
-        ? {
-            delivery: buildClientDeliveryPayload({
-              postalCode: deliveryCp,
-              cityMunicipality: this.deliveryCity(),
-              locality: this.deliveryLocality(),
-              settlementConsId: this.deliverySettlementConsId(),
-              latitude: this.deliveryLatitude(),
-              longitude: this.deliveryLongitude(),
-            }),
-          }
-        : {}),
+      deliveries: deliveryList,
+      ...(deliveryList[0] ? { delivery: deliveryList[0] } : {}),
       contacts: contactName
         ? normalizeContacts([
             {

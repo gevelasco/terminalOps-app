@@ -1,4 +1,4 @@
-import type { Client } from '@shared/models/client.models';
+import type { Client, ClientDelivery } from '@shared/models/client.models';
 import type { Operator, OperatorOperationalStatus } from '@shared/models/logistics.models';
 import { defaultClientPayment } from '@shared/utils/client-defaults';
 import {
@@ -34,10 +34,54 @@ function mapFleetMetaTenureMode<T extends { trailerTenureMode?: string }>(
   };
 }
 
+function mapApiClientDelivery(
+  row: Record<string, unknown>,
+  index: number,
+): ClientDelivery {
+  const postalCode =
+    typeof row['postalCode'] === 'string' ? row['postalCode'] : undefined;
+  const locality = typeof row['locality'] === 'string' ? row['locality'] : undefined;
+  const apiId = resourceIdKey(row['id']);
+  return {
+    id: apiId || `dlv-${index}-${postalCode ?? ''}-${locality ?? ''}`,
+    postalCode,
+    cityMunicipality:
+      typeof row['cityMunicipality'] === 'string' ? row['cityMunicipality'] : undefined,
+    locality,
+    settlementConsId:
+      typeof row['settlementConsId'] === 'string' ? row['settlementConsId'] : undefined,
+    latitude:
+      typeof row['latitude'] === 'number' && Number.isFinite(row['latitude'])
+        ? row['latitude']
+        : undefined,
+    longitude:
+      typeof row['longitude'] === 'number' && Number.isFinite(row['longitude'])
+        ? row['longitude']
+        : undefined,
+    destinationRateId:
+      row['destinationRateId'] != null ? String(row['destinationRateId']) : undefined,
+    isUnpricedRoute: Boolean(row['isUnpricedRoute']),
+  };
+}
+
+function mapApiClientDeliveries(row: Record<string, unknown>): ClientDelivery[] {
+  const rawList = row['deliveries'];
+  if (Array.isArray(rawList) && rawList.length > 0) {
+    return rawList
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+      .map((item, index) => mapApiClientDelivery(item, index));
+  }
+  const singular = row['delivery'];
+  if (singular && typeof singular === 'object') {
+    return [mapApiClientDelivery(singular as Record<string, unknown>, 0)];
+  }
+  return [];
+}
+
 /** Respuesta API → modelo `Client` del frontend. */
 export function mapApiClient(row: Record<string, unknown>): Client {
   const billing = row['billing'] as Record<string, unknown> | undefined;
-  const delivery = row['delivery'] as Record<string, unknown> | undefined;
+  const deliveries = mapApiClientDeliveries(row);
   const paymentTerms = (row['paymentTerms'] ?? row['payment']) as
     | Record<string, unknown>
     | undefined;
@@ -60,28 +104,8 @@ export function mapApiClient(row: Record<string, unknown>): Client {
           billingPhone: billing['billingPhone'] as string | undefined,
         }
       : undefined,
-    delivery: delivery
-      ? {
-          postalCode: delivery['postalCode'] as string | undefined,
-          cityMunicipality: delivery['cityMunicipality'] as string | undefined,
-          locality: delivery['locality'] as string | undefined,
-          settlementConsId: delivery['settlementConsId'] as string | undefined,
-          latitude:
-            typeof delivery['latitude'] === 'number' && Number.isFinite(delivery['latitude'])
-              ? delivery['latitude']
-              : undefined,
-          longitude:
-            typeof delivery['longitude'] === 'number' &&
-            Number.isFinite(delivery['longitude'])
-              ? delivery['longitude']
-              : undefined,
-          destinationRateId:
-            delivery['destinationRateId'] != null
-              ? String(delivery['destinationRateId'])
-              : undefined,
-          isUnpricedRoute: Boolean(delivery['isUnpricedRoute']),
-        }
-      : undefined,
+    deliveries,
+    delivery: deliveries[0],
     payment: paymentTerms
       ? {
           hasCredit: Boolean(paymentTerms['hasCredit']),

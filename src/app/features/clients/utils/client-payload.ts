@@ -4,6 +4,7 @@ import type {
   ClientDelivery,
   CreateClientPayload,
 } from '@shared/models/client.models';
+import { clientDeliveries } from '@features/clients/utils/client-deliveries';
 
 export function parseOptionalInt(raw: string): number | undefined {
   const t = raw.trim();
@@ -34,6 +35,33 @@ export function normalizeContacts(list: ClientContactPerson[]): ClientContactPer
     .filter((c) => c.name.length > 0);
 }
 
+function deliveryWriteBody(delivery: ClientDelivery): Record<string, unknown> {
+  return {
+    ...(delivery.postalCode ? { postalCode: delivery.postalCode } : {}),
+    ...(delivery.cityMunicipality
+      ? { cityMunicipality: delivery.cityMunicipality }
+      : {}),
+    ...(delivery.locality ? { locality: delivery.locality } : {}),
+    ...(delivery.settlementConsId
+      ? { settlementConsId: delivery.settlementConsId }
+      : {}),
+    ...(delivery.latitude != null ? { latitude: delivery.latitude } : {}),
+    ...(delivery.longitude != null ? { longitude: delivery.longitude } : {}),
+  };
+}
+
+export function normalizeDeliveries(list: ClientDelivery[]): ClientDelivery[] {
+  return list
+    .map((row) => ({
+      ...row,
+      postalCode: row.postalCode?.trim() || undefined,
+      cityMunicipality: row.cityMunicipality?.trim() || undefined,
+      locality: row.locality?.trim() || undefined,
+      settlementConsId: row.settlementConsId?.trim() || undefined,
+    }))
+    .filter((row) => (row.postalCode ?? '').length > 0);
+}
+
 export function buildClientDeliveryPayload(params: {
   postalCode: string;
   cityMunicipality: string;
@@ -41,6 +69,8 @@ export function buildClientDeliveryPayload(params: {
   settlementConsId: string;
   latitude: number | null;
   longitude: number | null;
+  destinationRateId?: string | null;
+  isUnpricedRoute?: boolean;
 }): ClientDelivery | undefined {
   const cp = params.postalCode.trim();
   if (!cp) {
@@ -53,11 +83,16 @@ export function buildClientDeliveryPayload(params: {
     settlementConsId: params.settlementConsId.trim() || undefined,
     latitude: params.latitude ?? undefined,
     longitude: params.longitude ?? undefined,
+    ...(params.destinationRateId?.trim()
+      ? { destinationRateId: params.destinationRateId.trim() }
+      : {}),
+    ...(params.isUnpricedRoute ? { isUnpricedRoute: true } : {}),
   };
 }
 
 export function validateClientDelivery(params: {
   postalCode: string;
+  cityMunicipality?: string;
   locality: string;
   settlementConsId: string;
   latitude: number | null;
@@ -72,6 +107,9 @@ export function validateClientDelivery(params: {
   }
   if (!params.settlementConsId.trim() && !params.locality.trim()) {
     return 'Elige la localidad de entrega.';
+  }
+  if (!(params.cityMunicipality ?? '').trim()) {
+    return 'Espera a que se complete la ciudad / municipio o revisa el CP.';
   }
   if (params.latitude == null || params.longitude == null) {
     return 'Espera a que se obtengan las coordenadas de entrega o revisa el CP.';
@@ -92,7 +130,10 @@ export function buildClientApiWriteBody(
 ): Record<string, unknown> {
   const client = input as Client;
   const payment = client.payment;
-  const delivery = client.delivery;
+  const deliveryRows = normalizeDeliveries(clientDeliveries(client));
+  const deliveryBodies = deliveryRows
+    .map((row) => deliveryWriteBody(row))
+    .filter((body) => Object.keys(body).length > 0);
   const paymentBody = payment
     ? {
         hasCredit: payment.hasCredit,
@@ -103,20 +144,6 @@ export function buildClientApiWriteBody(
         ...(payment.defaultPaymentMethod
           ? { defaultPaymentMethod: payment.defaultPaymentMethod }
           : {}),
-      }
-    : undefined;
-  const deliveryBody = delivery
-    ? {
-        ...(delivery.postalCode ? { postalCode: delivery.postalCode } : {}),
-        ...(delivery.cityMunicipality
-          ? { cityMunicipality: delivery.cityMunicipality }
-          : {}),
-        ...(delivery.locality ? { locality: delivery.locality } : {}),
-        ...(delivery.settlementConsId
-          ? { settlementConsId: delivery.settlementConsId }
-          : {}),
-        ...(delivery.latitude != null ? { latitude: delivery.latitude } : {}),
-        ...(delivery.longitude != null ? { longitude: delivery.longitude } : {}),
       }
     : undefined;
   const contacts = (client.contacts ?? []).map(({ name, role, phone, email }) => ({
@@ -152,8 +179,7 @@ export function buildClientApiWriteBody(
     ...(billing && Object.keys(billing).length > 0 ? { billing } : {}),
     ...(paymentBody ? { payment: paymentBody } : {}),
     ...(contacts.length > 0 ? { contacts } : {}),
-    ...(deliveryBody && Object.keys(deliveryBody).length > 0
-      ? { delivery: deliveryBody }
-      : {}),
+    deliveries: deliveryBodies,
+    ...(deliveryBodies[0] ? { delivery: deliveryBodies[0] } : {}),
   };
 }

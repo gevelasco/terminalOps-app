@@ -1,8 +1,9 @@
-import type { Client } from '@shared/models/client.models';
+import type { Client, ClientDelivery } from '@shared/models/client.models';
 import type { MxPostalSettlement } from '@shared/services/mexico-postal-code.service';
 import { localityKey, normalizeMxPostalCodeDigits } from '@features/trips/utils/mx-postal-settlement';
 import { latLonFromPrefill } from '@shared/services/lat-lon';
 import type { LatLon } from '@shared/services/osrm-driving-route.service';
+import { validClientDeliveries } from '@features/clients/utils/client-deliveries';
 
 /** Datos de un extremo de ruta ya conocidos (centro operativo o entrega del cliente). */
 export type TripRouteEndpointPrefill = {
@@ -89,12 +90,10 @@ export function originPrefillFromOperationalCenter(center: {
   };
 }
 
-/** Destino desde expediente del cliente (entrega). */
-export function destinationPrefillFromClient(client: Client): TripRouteEndpointPrefill | null {
-  const delivery = client.delivery;
-  if (!delivery) {
-    return null;
-  }
+/** Destino desde una ubicación de entrega concreta. */
+export function destinationPrefillFromDelivery(
+  delivery: ClientDelivery,
+): TripRouteEndpointPrefill | null {
   const postalCode = normalizeMxPostalCodeDigits(delivery.postalCode ?? '');
   if (postalCode.length !== 5) {
     return null;
@@ -107,6 +106,18 @@ export function destinationPrefillFromClient(client: Client): TripRouteEndpointP
     latitude: delivery.latitude ?? null,
     longitude: delivery.longitude ?? null,
   };
+}
+
+/**
+ * Destino desde expediente del cliente.
+ * Solo auto-rellena cuando hay exactamente una ruta de tarifa válida.
+ */
+export function destinationPrefillFromClient(client: Client): TripRouteEndpointPrefill | null {
+  const deliveries = validClientDeliveries(client);
+  if (deliveries.length !== 1) {
+    return null;
+  }
+  return destinationPrefillFromDelivery(deliveries[0]!);
 }
 
 function parseCityMunicipalityLine(line: string): {

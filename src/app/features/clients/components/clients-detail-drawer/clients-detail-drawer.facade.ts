@@ -18,13 +18,19 @@ import { ClientsBalanceContextService } from '@features/clients/services/clients
 import {
   boolToYesNo,
   buildClientDeliveryPayload,
-  formatClientDeliveryCoord,
   normalizeContacts,
+  normalizeDeliveries,
   parseOptionalInt,
   validateClientDelivery,
   yesNoToBool,
 } from '@features/clients/utils/client-payload';
-import { clientDeliveryRouteLinkTitle } from '@features/clients/utils/client-delivery-route-link';
+import {
+  clientDeliveries,
+  deliveryPlaceLabel,
+  isSameClientDeliveryLocation,
+  withClientDeliveries,
+} from '@features/clients/utils/client-deliveries';
+import { clientDeliveryRouteStatusLabel } from '@features/clients/utils/client-delivery-route-link';
 import { deriveClientCommercialHealthFromSummary } from '@features/clients/utils/client-commercial-status.util';
 import { formatClientBalanceMoney } from '@features/clients/utils/client-balance-summary';
 import type { ToIconName } from '@shared/ui/to-icon/to-icon-paths';
@@ -41,6 +47,7 @@ import type {
   Client,
   ClientAttachedDocument,
   ClientContactPerson,
+  ClientDelivery,
 } from '@shared/models/client.models';
 import { type ToBadgeVariant } from '@shared/ui/to-badge/to-badge.component';
 import { type ToSegmentTab } from '@shared/ui/to-segment-control/to-segment-control.component';
@@ -133,6 +140,8 @@ export class ClientsDetailDrawerFacade {
   readonly deliveryLongitude = signal<number | null>(null);
   readonly deliveryDestinationRateId = signal<string | null>(null);
   readonly deliveryIsUnpricedRoute = signal(false);
+  readonly deliveries = signal<ClientDelivery[]>([]);
+  readonly deliveryFormNonce = signal(0);
 
   readonly contacts = signal<ClientContactPerson[]>([]);
 
@@ -211,6 +220,7 @@ export class ClientsDetailDrawerFacade {
         }
         this.editingSection.set(null);
         this.cancelContactForm();
+        this.cancelDeliveryForm();
         this.periodFromMonth.set(this.now.getMonth() + 1);
         this.periodFromYear.set(this.now.getFullYear());
         this.periodToMonth.set(this.now.getMonth() + 1);
@@ -571,6 +581,7 @@ export class ClientsDetailDrawerFacade {
     this.originalFiscalDocuments = [];
     this.editingSection.set(null);
     this.cancelContactForm();
+    this.cancelDeliveryForm();
   }
 
   showClientEdit(section: ClientDetailEditSection): boolean {
@@ -617,6 +628,84 @@ export class ClientsDetailDrawerFacade {
 
   removeContact(id: string): void {
     this.contacts.update((list) => list.filter((c) => c.id !== id));
+  }
+
+  cancelDeliveryForm(): void {
+    this.resetDeliveryFormFields();
+  }
+
+  commitDelivery(): void {
+    if (this.saving()) {
+      return;
+    }
+    const err = validateClientDelivery({
+      postalCode: this.deliveryCp(),
+      cityMunicipality: this.deliveryCity(),
+      locality: this.deliveryLocality(),
+      settlementConsId: this.deliverySettlementConsId(),
+      latitude: this.deliveryLatitude(),
+      longitude: this.deliveryLongitude(),
+    });
+    if (err) {
+      this.toast.show(err, 'warning');
+      return;
+    }
+    const delivery = buildClientDeliveryPayload({
+      postalCode: this.deliveryCp(),
+      cityMunicipality: this.deliveryCity(),
+      locality: this.deliveryLocality(),
+      settlementConsId: this.deliverySettlementConsId(),
+      latitude: this.deliveryLatitude(),
+      longitude: this.deliveryLongitude(),
+      destinationRateId: this.deliveryDestinationRateId(),
+      isUnpricedRoute: this.deliveryIsUnpricedRoute(),
+    });
+    if (!delivery) {
+      this.toast.show('Indica el código postal de entrega.', 'warning');
+      return;
+    }
+    const duplicate = this.deliveries().some((row) =>
+      isSameClientDeliveryLocation(row, delivery),
+    );
+    if (duplicate) {
+      this.toast.show('Esa ubicación de entrega ya está registrada.', 'warning');
+      return;
+    }
+    const id = `dlv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const next = [...this.deliveries(), { ...delivery, id }];
+    this.persistClient(withClientDeliveries(this.client(), normalizeDeliveries(next)), {
+      successMessage: 'Nuevo lugar de entrega agregado.',
+      closeSection: false,
+      resetForm: true,
+    });
+  }
+
+  removeDelivery(id: string): void {
+    if (this.saving()) {
+      return;
+    }
+    const removed = this.deliveries().find((row) => row.id === id);
+    if (!removed) {
+      return;
+    }
+    const next = this.deliveries().filter((row) => row.id !== id);
+    this.persistClient(withClientDeliveries(this.client(), normalizeDeliveries(next)), {
+      successMessage: `Lugar de entrega ${deliveryPlaceLabel(removed)} eliminado.`,
+      closeSection: false,
+    });
+  }
+
+  private resetDeliveryFormFields(): void {
+    this.savedDeliveryPostalCode.set('');
+    this.deliveryCp.set('');
+    this.deliveryCity.set('');
+    this.deliveryLocality.set('');
+    this.deliverySettlementConsId.set('');
+    this.deliveryLatitude.set(null);
+    this.deliveryLongitude.set(null);
+    this.deliveryDestinationRateId.set(null);
+    this.deliveryIsUnpricedRoute.set(false);
+    this.deliveryFormNonce.update((n) => n + 1);
   }
 
   saveIdentification(): void {
@@ -753,6 +842,7 @@ export class ClientsDetailDrawerFacade {
           this.toast.show('Cliente actualizado.', 'success');
           this.editingSection.set(null);
           this.cancelContactForm();
+          this.cancelDeliveryForm();
         },
         error: () => {
           this.saving.set(false);
@@ -761,61 +851,16 @@ export class ClientsDetailDrawerFacade {
       });
   }
 
-  saveDelivery(): void {
-    const err = validateClientDelivery({
-      postalCode: this.deliveryCp(),
-      locality: this.deliveryLocality(),
-      settlementConsId: this.deliverySettlementConsId(),
-      latitude: this.deliveryLatitude(),
-      longitude: this.deliveryLongitude(),
-    });
-    if (err) {
-      this.toast.show(err, 'warning');
-      return;
-    }
-    const delivery = buildClientDeliveryPayload({
-      postalCode: this.deliveryCp(),
-      cityMunicipality: this.deliveryCity(),
-      locality: this.deliveryLocality(),
-      settlementConsId: this.deliverySettlementConsId(),
-      latitude: this.deliveryLatitude(),
-      longitude: this.deliveryLongitude(),
-    });
-    if (!delivery) {
-      this.toast.show('Indica el código postal de entrega.', 'warning');
-      return;
-    }
-    const base = this.client();
-    const updated: Client = {
-      ...base,
-      delivery,
-    };
-    this.persistClient(updated);
-  }
-
-  deliveryCoordLabel(value: number | undefined): string {
-    return formatClientDeliveryCoord(value);
-  }
-
-  deliveryRouteLinkLabel(): string {
-    const delivery = this.client().delivery;
-    if (!delivery?.postalCode?.trim() || !delivery.locality?.trim()) {
-      return '—';
-    }
-    if (delivery.destinationRateId) {
-      return clientDeliveryRouteLinkTitle('linked') ?? 'Ruta tarifada disponible';
-    }
-    if (delivery.isUnpricedRoute) {
-      return (
-        clientDeliveryRouteLinkTitle('unpriced') ??
-        'Ruta sin tarifa (pendiente de configuración)'
-      );
-    }
-    return '—';
+  deliveryRouteLinkLabel(delivery: ClientDelivery): string {
+    return clientDeliveryRouteStatusLabel(delivery);
   }
 
   hasClientDelivery(): boolean {
-    return !!this.client().delivery?.postalCode?.trim();
+    return clientDeliveries(this.client()).some((row) => !!row.postalCode?.trim());
+  }
+
+  clientDeliveriesList(): ClientDelivery[] {
+    return clientDeliveries(this.client());
   }
 
   saveContacts(): void {
@@ -853,7 +898,10 @@ export class ClientsDetailDrawerFacade {
     this.persistClient(updated);
   }
 
-  private persistClient(updated: Client): void {
+  private persistClient(
+    updated: Client,
+    options?: { successMessage?: string; closeSection?: boolean; resetForm?: boolean },
+  ): void {
     if (this.saving()) {
       return;
     }
@@ -864,15 +912,34 @@ export class ClientsDetailDrawerFacade {
       .subscribe({
         next: () => {
           this.saving.set(false);
-          this.toast.show('Cliente actualizado.', 'success');
+          this.toast.show(options?.successMessage ?? 'Cliente actualizado.', 'success');
+          if (options?.closeSection === false) {
+            this.syncDeliveriesFromClient();
+            if (options.resetForm) {
+              this.resetDeliveryFormFields();
+            }
+            return;
+          }
           this.editingSection.set(null);
           this.cancelContactForm();
+          this.cancelDeliveryForm();
         },
         error: () => {
           this.saving.set(false);
           this.toast.show('No se pudo guardar.', 'error');
         },
       });
+  }
+
+  private syncDeliveriesFromClient(): void {
+    this.deliveries.set(
+      clientDeliveries(this.client()).map((row, index) => ({
+        ...row,
+        id:
+          row.id?.trim() ||
+          `dlv-${index}-${row.postalCode ?? ''}-${row.locality ?? ''}`,
+      })),
+    );
   }
 
   private patchFormFromClient(c: Client): void {
@@ -888,16 +955,8 @@ export class ClientsDetailDrawerFacade {
     this.billEmail.set(b.billingEmail ?? '');
     this.billPhone.set(b.billingPhone ?? '');
     this.editDocuments.set([...(c.documents ?? [])]);
-    const d = c.delivery;
-    this.savedDeliveryPostalCode.set(d?.postalCode?.trim() ?? '');
-    this.deliveryCp.set(d?.postalCode ?? '');
-    this.deliveryCity.set(d?.cityMunicipality ?? '');
-    this.deliveryLocality.set(d?.locality ?? '');
-    this.deliverySettlementConsId.set(d?.settlementConsId ?? '');
-    this.deliveryLatitude.set(d?.latitude ?? null);
-    this.deliveryLongitude.set(d?.longitude ?? null);
-    this.deliveryDestinationRateId.set(d?.destinationRateId?.trim() || null);
-    this.deliveryIsUnpricedRoute.set(d?.isUnpricedRoute === true);
+    this.syncDeliveriesFromClient();
+    this.resetDeliveryFormFields();
     this.contacts.set([...(c.contacts ?? [])].map((row) => ({ ...row })));
     const p = c.payment;
     this.payHasCredit.set(boolToYesNo(p?.hasCredit ?? false));

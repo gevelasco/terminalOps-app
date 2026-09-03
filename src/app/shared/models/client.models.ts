@@ -57,8 +57,10 @@ export interface ClientPaymentTerms {
   defaultPaymentMethod?: string;
 }
 
-/** Ubicación de entrega del cliente (una por expediente). */
+/** Ubicación de entrega / ruta de tarifa del cliente (varias por expediente). */
 export interface ClientDelivery {
+  /** Id local o de API para filas de tabla; no se envía en writes. */
+  id?: string;
   postalCode?: string;
   cityMunicipality?: string;
   locality?: string;
@@ -88,7 +90,13 @@ export interface Client {
   relationshipStartedOn?: string;
   notes?: string;
   billing?: ClientBilling;
+  /**
+   * Primera ubicación de `deliveries` (compatibilidad con API/UI que aún leen
+   * un solo destino). Preferir `deliveries` en código nuevo.
+   */
   delivery?: ClientDelivery;
+  /** Ubicaciones de entrega / rutas de tarifa (todas válidas). */
+  deliveries?: ClientDelivery[];
   contacts?: ClientContactPerson[];
   /** Adjuntos de datos fiscales / facturación. */
   documents?: ClientAttachedDocument[];

@@ -1,4 +1,5 @@
 import { normalizeMxPostalCodeDigits } from '@features/trips/utils/mx-postal-settlement';
+import type { ClientDelivery } from '@shared/models/client.models';
 import type { DestinationRate } from '@shared/models/destination-rate.models';
 import { findDestinationRateByRoute } from '@features/clients/utils/find-destination-rate-by-postal-code';
 
@@ -84,6 +85,22 @@ export function clientDeliveryRouteLinkTitle(
     default:
       return null;
   }
+}
+
+export function clientDeliveryRouteStatusLabel(delivery: ClientDelivery): string {
+  if (!delivery.postalCode?.trim() || !delivery.locality?.trim()) {
+    return '—';
+  }
+  if (delivery.destinationRateId) {
+    return clientDeliveryRouteLinkTitle('linked') ?? 'Ruta tarifada disponible';
+  }
+  if (delivery.isUnpricedRoute) {
+    return (
+      clientDeliveryRouteLinkTitle('unpriced') ??
+      'Ruta sin tarifa (pendiente de configuración)'
+    );
+  }
+  return '—';
 }
 
 export function clientDeliveryRouteLinkHint(

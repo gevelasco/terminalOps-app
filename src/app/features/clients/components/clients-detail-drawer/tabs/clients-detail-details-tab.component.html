@@ -271,95 +271,161 @@
         class="fleet-unit-sec fleet-unit-sec--boxed"
         aria-labelledby="cli-dv-delivery"
       >
-        <div class="fleet-unit-sec__header">
-          <h3 id="cli-dv-delivery" class="fleet-unit-sec__title">Datos de entrega</h3>
-          @if (vm.showClientEdit("delivery")) {
-            <button
-              type="button"
-              class="fleet-unit-sec__edit-btn"
-              aria-label="Editar datos de entrega"
-              [disabled]="vm.saving()"
-              (click)="vm.startEditSection('delivery')"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  fill="currentColor"
-                  d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
-                />
-              </svg>
-            </button>
+        <div class="fleet-unit-detail__maint-history-block">
+          <div class="fleet-unit-detail__maint-section-header">
+            <p id="cli-dv-delivery" class="fleet-unit-detail__maint-section-label">
+              Datos de entrega
+            </p>
+            @if (vm.showClientEdit("delivery")) {
+              <button
+                type="button"
+                class="fleet-unit-sec__edit-btn"
+                style="margin-left: auto"
+                aria-label="Editar datos de entrega"
+                [disabled]="vm.saving()"
+                (click)="vm.startEditSection('delivery')"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
+                  />
+                </svg>
+              </button>
+            }
+          </div>
+
+          @if (vm.editingSection() === "delivery") {
+            @for (_ of [vm.deliveryFormNonce()]; track _) {
+            <div class="fleet-unit-detail__maint-form">
+              <app-client-delivery-location-fields
+                [referencePostalCode]="vm.savedDeliveryPostalCode()"
+                [savedDestinationRateId]="null"
+                [savedIsUnpricedRoute]="false"
+                [disabled]="vm.saving()"
+                [(postalCode)]="vm.deliveryCp"
+                [(cityMunicipality)]="vm.deliveryCity"
+                [(locality)]="vm.deliveryLocality"
+                [(settlementConsId)]="vm.deliverySettlementConsId"
+                [(latitude)]="vm.deliveryLatitude"
+                [(longitude)]="vm.deliveryLongitude"
+                [(destinationRateId)]="vm.deliveryDestinationRateId"
+                [(isUnpricedRoute)]="vm.deliveryIsUnpricedRoute"
+              />
+              <div class="fleet-unit-detail__maint-form-actions">
+                <to-button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  [disabled]="vm.saving()"
+                  (click)="vm.cancelSectionEdit()"
+                >
+                  Cancelar
+                </to-button>
+                <to-button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  [disabled]="vm.saving()"
+                  (click)="vm.commitDelivery()"
+                >
+                  <to-icon name="save" [size]="14" />
+                  {{ vm.saving() ? "Guardando…" : "Guardar" }}
+                </to-button>
+              </div>
+            </div>
+            }
+          }
+
+          @if (vm.editingSection() !== "delivery") {
+            @if (!vm.hasClientDelivery()) {
+              <p class="clients-contact-empty">Sin ubicación de entrega registrada.</p>
+            } @else {
+              <div class="clients-contact-scroll">
+                <table class="clients-contact-table" aria-label="Datos de entrega">
+                  <thead>
+                    <tr>
+                      <th scope="col">C.P.</th>
+                      <th scope="col">Ciudad / municipio</th>
+                      <th scope="col">Localidad</th>
+                      <th scope="col">Ruta tarifada</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (d of vm.clientDeliveriesList(); track d.id ?? $index) {
+                      <tr>
+                        <td>{{ d.postalCode?.trim() || "—" }}</td>
+                        <td>{{ d.cityMunicipality?.trim() || "—" }}</td>
+                        <td>{{ d.locality?.trim() || "—" }}</td>
+                        <td>{{ vm.deliveryRouteLinkLabel(d) }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          } @else {
+            @if (vm.deliveries().length === 0) {
+              <p class="clients-contact-empty">Sin ubicación de entrega registrada.</p>
+            } @else {
+              <div class="clients-contact-scroll">
+                <table class="clients-contact-table" aria-label="Datos de entrega">
+                  <thead>
+                    <tr>
+                      <th scope="col">C.P.</th>
+                      <th scope="col">Ciudad / municipio</th>
+                      <th scope="col">Localidad</th>
+                      <th scope="col">Ruta tarifada</th>
+                      <th
+                        scope="col"
+                        class="clients-contact-th--remove"
+                        aria-label="Eliminar ubicación"
+                      ></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (d of vm.deliveries(); track d.id ?? $index) {
+                      <tr>
+                        <td>{{ d.postalCode?.trim() || "—" }}</td>
+                        <td>{{ d.cityMunicipality?.trim() || "—" }}</td>
+                        <td>{{ d.locality?.trim() || "—" }}</td>
+                        <td>{{ vm.deliveryRouteLinkLabel(d) }}</td>
+                        <td class="clients-contact-td--remove">
+                          <to-icon-button
+                            label="Eliminar ubicación"
+                            type="button"
+                            size="sm"
+                            [disabled]="vm.saving()"
+                            (click)="vm.removeDelivery(d.id ?? '')"
+                          >
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              aria-hidden="true"
+                            >
+                              <polyline points="3 6 5 6 21 6" />
+                              <path
+                                d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                              />
+                              <line x1="10" y1="11" x2="10" y2="17" />
+                              <line x1="14" y1="11" x2="14" y2="17" />
+                            </svg>
+                          </to-icon-button>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
           }
         </div>
-        @if (vm.editingSection() !== "delivery") {
-          @if (!vm.hasClientDelivery()) {
-            <p class="clients-contact-empty">Sin ubicación de entrega registrada.</p>
-          } @else {
-            <dl class="fleet-unit-detail__dl">
-              <div class="fleet-unit-detail__row">
-                <dt>C.P. origen</dt>
-                <dd>{{ vm.client().delivery?.postalCode?.trim() || "—" }}</dd>
-              </div>
-              <div class="fleet-unit-detail__row">
-                <dt>Ciudad / municipio</dt>
-                <dd>{{ vm.client().delivery?.cityMunicipality?.trim() || "—" }}</dd>
-              </div>
-              <div class="fleet-unit-detail__row">
-                <dt>Localidad</dt>
-                <dd>{{ vm.client().delivery?.locality?.trim() || "—" }}</dd>
-              </div>
-              <div class="fleet-unit-detail__row">
-                <dt>Latitud</dt>
-                <dd>{{ vm.deliveryCoordLabel(vm.client().delivery?.latitude) }}</dd>
-              </div>
-              <div class="fleet-unit-detail__row">
-                <dt>Longitud</dt>
-                <dd>{{ vm.deliveryCoordLabel(vm.client().delivery?.longitude) }}</dd>
-              </div>
-              <div class="fleet-unit-detail__row">
-                <dt>Ruta tarifada</dt>
-                <dd>{{ vm.deliveryRouteLinkLabel() }}</dd>
-              </div>
-            </dl>
-          }
-        } @else {
-          <div class="fleet-unit-sec__edit-form">
-            <app-client-delivery-location-fields
-              [referencePostalCode]="vm.savedDeliveryPostalCode()"
-              [savedDestinationRateId]="vm.client().delivery?.destinationRateId ?? null"
-              [savedIsUnpricedRoute]="vm.client().delivery?.isUnpricedRoute ?? false"
-              [disabled]="vm.saving()"
-              [(postalCode)]="vm.deliveryCp"
-              [(cityMunicipality)]="vm.deliveryCity"
-              [(locality)]="vm.deliveryLocality"
-              [(settlementConsId)]="vm.deliverySettlementConsId"
-              [(latitude)]="vm.deliveryLatitude"
-              [(longitude)]="vm.deliveryLongitude"
-              [(destinationRateId)]="vm.deliveryDestinationRateId"
-              [(isUnpricedRoute)]="vm.deliveryIsUnpricedRoute"
-            />
-            <div class="fleet-unit-sec__edit-actions">
-              <to-button
-                type="button"
-                variant="outline"
-                size="sm"
-                [disabled]="vm.saving()"
-                (click)="vm.cancelSectionEdit()"
-              >
-                Cancelar
-              </to-button>
-              <to-button
-                type="button"
-                variant="primary"
-                size="sm"
-                [disabled]="vm.saving()"
-                (click)="vm.saveDelivery()"
-              >
-                <to-icon name="save" [size]="14" />
-                {{ vm.saving() ? "Guardando…" : "Guardar" }}
-              </to-button>
-            </div>
-          </div>
-        }
       </section>
 
       <section

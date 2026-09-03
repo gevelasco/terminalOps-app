@@ -98,15 +98,27 @@
         />
       </div>
       <div class="maniobra-cp-stack">
-        <to-input
-          label="CP Destino *"
-          placeholder="Ej. 77560"
-          [maxLength]="5"
-          inputName="destinationCp"
-          autocomplete="postal-code"
-          [(value)]="destinationCp"
-          (blurNotify)="onDestinationCpBlur()"
-        />
+        @if (destinationCpUsesSuggestions()) {
+          <app-destination-cp-combobox
+            label="CP Destino *"
+            labelHint="Elige un CP de las tarifas del cliente o escribe uno nuevo."
+            [placeholder]="destinationCpPlaceholder()"
+            [suggestions]="destinationCpSuggestions()"
+            [(value)]="destinationCp"
+            (picked)="onDestinationCpSuggestionPicked($event)"
+            (blurNotify)="onDestinationCpBlur()"
+          />
+        } @else {
+          <to-input
+            label="CP Destino *"
+            placeholder="Ej. 77560"
+            [maxLength]="5"
+            inputName="destinationCp"
+            autocomplete="postal-code"
+            [(value)]="destinationCp"
+            (blurNotify)="onDestinationCpBlur()"
+          />
+        }
         @if (destinationCpLoading()) {
           <p class="maniobra-drawer__route-line" aria-live="polite">
             Consultando catálogo postal…
